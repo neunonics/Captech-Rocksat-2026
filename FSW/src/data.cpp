@@ -1,7 +1,6 @@
 #include <ArduinoJson.h>
 #include <STM32RTC.h>
 
-
 #define NUM_BINS 1024 // Adjust this based on your detector's resolution
 
 struct FSW_DATETIME{
@@ -89,6 +88,13 @@ struct FSW_EDS{
     FSW_POWER twelveV;
     FSW_POWER fiveV;
     FSW_POWER threeV;
+
+};
+
+struct FSW_SYSTEM{
+    FSW_EDS epds;
+    FSW_IMU ads;
+    FSW_STATUS status;
 
 };
 
