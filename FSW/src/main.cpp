@@ -1,12 +1,15 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <ArduinoJson.h>
+#include <SD.h>
+#include <SPI.h>
+#include <STM32RTC.h>
 #include "pins.h"
 
 
 //Globals
 JsonDocument doc;
-
+STM32RTC rtc;
 
 //Prototypes
 void te2(void);
@@ -25,6 +28,7 @@ void setup() {
 
   digitalWrite(ENA_IRIDIUM, LOW);
   digitalWrite(ENA_SPECTRO, LOW);
+
   digitalWrite(LED_POWER, HIGH);
   digitalWrite(LED_HRTBT, LOW);
   digitalWrite(LED_SDACTIVE, LOW);
@@ -33,6 +37,9 @@ void setup() {
 
   // Start I2C
   Wire.begin();
+
+  //Setup SD Card
+
 }
 
 void loop() {
@@ -42,7 +49,6 @@ void loop() {
   if(TE2_ISOLATED == HIGH){
     te2();
   }
-
 
 }
 
