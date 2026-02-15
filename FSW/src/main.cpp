@@ -2,14 +2,14 @@
 #include <Wire.h>
 #include <ArduinoJson.h>
 #include <SD.h>
-#include <SPI.h>
 #include <STM32RTC.h>
 #include "pins.h"
+#include "data.h"
 
 
 //Globals
 JsonDocument doc;
-STM32RTC rtc;
+FSW_SYSTEM sys;
 
 //Prototypes
 void te2(void);
