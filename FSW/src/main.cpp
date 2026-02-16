@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <STM32RTC.h>
+#include "rockblock_9704.h"
 #include "pins.h"
 #include "data.h"
 
