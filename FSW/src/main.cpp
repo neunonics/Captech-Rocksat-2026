@@ -48,7 +48,6 @@ void setup() {
   // Start I2C
   Wire.begin();
   //Setup SD Card
-
 }
 
 void loop() {
@@ -86,3 +85,6 @@ void saveData(String filename){
     file.close();
   }
 }
+
+void sendToIridium(){
+};
