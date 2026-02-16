@@ -12,7 +12,7 @@ dt["year"] = datetime.year;
 return;
 }
 
-int saveData(JsonDocument json, String filename){
+int saveJsonData(JsonDocument json, String filename){
     File file = SD.open(filename, FILE_WRITE);
     if (file) {
         serializeJson(json, file);
@@ -23,6 +23,8 @@ int saveData(JsonDocument json, String filename){
 
     return 1;
 }
+
+int checkSum()
 
 FSW_GAMMA_DATA fetchSpectrum(int spect, HardwareSerial *uart, FSW_DATETIME dt) {
     FSW_GAMMA_DATA data;
