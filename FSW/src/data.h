@@ -38,6 +38,7 @@ struct FSW_STATUS{
     bool comms_connected;
     bool bno1_connected;
     bool bno2_connected;
+    bool is_initalized;
 
 };
 
@@ -96,7 +97,29 @@ struct FSW_SYSTEM{
     FSW_EDS epds;
     FSW_IMU ads;
     FSW_STATUS status;
+
+    FSW_SYSTEM(){
+        status.bno1_connected =         false;
+        status.bno2_connected =         false;
+        status.comms_connected =        false;
+
+        status.enable_iridium =         false;
+        status.enable_spectrometer =    false;
+        
+        status.error_code = 0;
+
+        status.is_armed =               false;
+        status.is_te2 =                 false;
+
+        status.led_comms =              false;
+        status.led_error =              false;
+        status.led_hrtbt =              false;
+        status.led_sd =                 false;
+
+        status.is_initalized =          true;
+    };
 };
 
-void saveData(int round, FSW_SYSTEM sys, FSW_DATETIME);
+void flagsToJson(JsonDocument&, FSW_DATETIME);
+int saveJsonData(JsonDocument, String);
 FSW_GAMMA_DATA fetchSpectrum(int, HardwareSerial, FSW_DATETIME);

@@ -2,7 +2,7 @@
 #include "data.h"
 
 void flagsToJson(JsonDocument& json, FSW_DATETIME datetime){
-JsonObject dt = json.createNestedObject("datetime");
+JsonObject dt = json["datetime"];
 dt["hour"] = datetime.hour;
 dt["second"] = datetime.second;
 dt["minute"] = datetime.minute;
@@ -23,8 +23,6 @@ int saveJsonData(JsonDocument json, String filename){
 
     return 1;
 }
-
-int checkSum()
 
 FSW_GAMMA_DATA fetchSpectrum(int spect, HardwareSerial *uart, FSW_DATETIME dt) {
     FSW_GAMMA_DATA data;
