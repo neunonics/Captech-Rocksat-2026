@@ -97,6 +97,7 @@ struct FSW_SYSTEM{
     FSW_EDS epds;
     FSW_IMU ads;
     FSW_STATUS status;
+    FSW_DATETIME mission_start;
 
     enum ERROR_FLAGS {
         NONE                        = 0b0,
