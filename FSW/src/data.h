@@ -98,15 +98,24 @@ struct FSW_SYSTEM{
     FSW_IMU ads;
     FSW_STATUS status;
 
+    enum ERROR_FLAGS {
+        NONE                        = 0b0,
+        SD_ERROR_GENERAL            = 0b1,
+        COMMS_ERROR_GENERAL         = 0b10,
+    };
+
     FSW_SYSTEM(){
         status.bno1_connected =         false;
         status.bno2_connected =         false;
         status.comms_connected =        false;
+        status.spect_2_connected =      false;
+        status.spect_1_connected =      false;
+        status.orin_connected =         false;
 
         status.enable_iridium =         false;
         status.enable_spectrometer =    false;
         
-        status.error_code = 0;
+        status.error_code =                 0;
 
         status.is_armed =               false;
         status.is_te2 =                 false;
@@ -117,6 +126,13 @@ struct FSW_SYSTEM{
         status.led_sd =                 false;
 
         status.is_initalized =          true;
+    };
+
+    void addErrorFlag(int flag){
+        status.error_code = status.error_code | flag;
+    };
+    void removeErrorFlag(int flag){
+        status.error_code = status.error_code & ~flag;
     };
 };
 

@@ -56,7 +56,8 @@ void loop() {
 
 void te2(){
   //Runs when TE-2 is triggered
+  sys.status.enable_iridium = true;
+  sys.status.enable_spectrometer = true;
   digitalWrite(ENA_SPECTRO, HIGH);
   digitalWrite(ENA_IRIDIUM, HIGH);
-  
 }
