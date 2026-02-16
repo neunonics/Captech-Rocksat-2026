@@ -10,6 +10,8 @@
 //Globals
 JsonDocument doc;
 FSW_SYSTEM sys;
+STM32RTC& rtc = STM32RTC::getInstance();
+
 
 //Prototypes
 void te2(void);
@@ -56,4 +58,5 @@ void te2(){
   //Runs when TE-2 is triggered
   digitalWrite(ENA_SPECTRO, HIGH);
   digitalWrite(ENA_IRIDIUM, HIGH);
+  
 }

@@ -1,4 +1,5 @@
 #include <ArduinoJson.h>
+#include <SD.h>
 #include <STM32RTC.h>
 
 #define NUM_BINS 1024 // Adjust this based on your detector's resolution
@@ -95,5 +96,7 @@ struct FSW_SYSTEM{
     FSW_EDS epds;
     FSW_IMU ads;
     FSW_STATUS status;
-
 };
+
+void saveData(int round, FSW_SYSTEM sys, FSW_DATETIME);
+FSW_GAMMA_DATA fetchSpectrum(int, HardwareSerial, FSW_DATETIME);

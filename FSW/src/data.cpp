@@ -1,8 +1,28 @@
 
 #include "data.h"
 
+void flagsToJson(JsonDocument& json, FSW_DATETIME datetime){
+JsonObject dt = json.createNestedObject("datetime");
+dt["hour"] = datetime.hour;
+dt["second"] = datetime.second;
+dt["minute"] = datetime.minute;
+dt["day"] = datetime.day;
+dt["month"] = datetime.month;
+dt["year"] = datetime.year;
+return;
+}
 
+int saveData(JsonDocument json, String filename){
+    File file = SD.open(filename, FILE_WRITE);
+    if (file) {
+        serializeJson(json, file);
+        file.println();
+        file.close();
+        return 0;
+    }
 
+    return 1;
+}
 
 FSW_GAMMA_DATA fetchSpectrum(int spect, HardwareSerial *uart, FSW_DATETIME dt) {
     FSW_GAMMA_DATA data;
