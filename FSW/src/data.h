@@ -2,7 +2,14 @@
 #include <SD.h>
 #include <STM32RTC.h>
 
-#define NUM_BINS 1024 // Adjust this based on your detector's resolution
+#define NUM_BINS 4096 // Adjust this based on your detector's resolution
+#pragma pack(push, 1)
+
+enum FSW_ERROR_FLAGS {
+    NONE                        = 0b0,
+    SD_ERROR_GENERAL            = 0b1,
+    COMMS_ERROR_GENERAL         = 0b10,
+};
 
 struct FSW_DATETIME{
     u_int8_t day;
@@ -12,13 +19,31 @@ struct FSW_DATETIME{
     u_int8_t minute;
     u_int8_t year;
     uint32_t subseconds;
+
+    void setFromRTC(STM32RTC& rtc){
+        day = rtc.getDay();
+        month = rtc.getMonth();
+        year = rtc.getYear();
+
+        minute = rtc.getMinutes();
+        second = rtc.getSeconds();
+        subseconds = rtc.getSubSeconds();
+        hour = rtc.getHours();
+
+    }
 };
 
 struct FSW_GAMMA_DATA {
     FSW_DATETIME datetime;
     uint32_t spectrumID;
     uint16_t bins[NUM_BINS];
-    bool valid; 
+    bool valid;
+
+    FSW_GAMMA_DATA(){
+        for(int i = 0; i<NUM_BINS; i++){
+            bins[i] = 0;
+        }
+    };
 };
 
 struct FSW_STATUS{
@@ -28,7 +53,6 @@ struct FSW_STATUS{
     bool led_error;
     bool led_sd;
     bool led_hrtbt;
-    int error_code;
     bool is_armed;
     bool is_te2;
 
@@ -39,6 +63,8 @@ struct FSW_STATUS{
     bool bno1_connected;
     bool bno2_connected;
     bool is_initalized;
+    bool RESERVED;
+    u_int32_t error_code;
 
 };
 
@@ -74,10 +100,10 @@ struct FSW_ADS{
 };
 
 struct FSW_PREDICTION{
-    int priority;
-    int spectrumID;
-    String prediction;
+    u_int8_t priority;
+    uint8_t spectrumID;
     float probability;
+    char prediction[40];
 };
 
 struct FSW_POWER{
@@ -98,12 +124,7 @@ struct FSW_SYSTEM{
     FSW_IMU ads;
     FSW_STATUS status;
     FSW_DATETIME mission_start;
-
-    enum ERROR_FLAGS {
-        NONE                        = 0b0,
-        SD_ERROR_GENERAL            = 0b1,
-        COMMS_ERROR_GENERAL         = 0b10,
-    };
+    FSW_GAMMA_DATA OpenGammaData;
 
     FSW_SYSTEM(){
         status.bno1_connected =         false;
@@ -135,7 +156,10 @@ struct FSW_SYSTEM{
     void removeErrorFlag(int flag){
         status.error_code = status.error_code & ~flag;
     };
+
+
 };
+#pragma pack(pop)
 
 void flagsToJson(JsonDocument&, FSW_DATETIME);
 int saveJsonData(JsonDocument, String);

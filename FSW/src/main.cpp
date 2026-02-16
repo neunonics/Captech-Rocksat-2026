@@ -22,13 +22,7 @@ void te2(void);
 
 void setup() {
   //Set Mission Start time
-  sys.mission_start.day = rtc.getDay();
-  sys.mission_start.hour = rtc.getHours();
-  sys.mission_start.minute = rtc.getMinutes();
-  sys.mission_start.month = rtc.getMonth();
-  sys.mission_start.year = rtc.getYear();
-  sys.mission_start.second = rtc.getSeconds();
-  sys.mission_start.subseconds = rtc.getSubSeconds();
+  sys.mission_start.setFromRTC(rtc);
 
   //Setup Pins
   pinMode(TE2_ISOLATED, INPUT);
@@ -49,17 +43,16 @@ void setup() {
   digitalWrite(LED_ERROR, LOW);
   digitalWrite(LED_COMM, LOW);
 
-  attachInterrupt(TE2_ISOLATED, te2, RISING);
+  //Interupt 
+  attachInterrupt(TE2_ISOLATED, te2, CHANGE);
   // Start I2C
   Wire.begin();
-
   //Setup SD Card
 
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-
   //Check to see if TE-2 is pulled high
 
 }
@@ -71,4 +64,25 @@ void te2(){
   sys.status.enable_spectrometer = true;
   digitalWrite(ENA_SPECTRO, HIGH);
   digitalWrite(ENA_IRIDIUM, HIGH);
+}
+
+void saveData(String filename){
+  File file = SD.open(filename, FILE_WRITE);
+  if(file){
+    unsigned char headerBytes[4] = {'O','D','I','N'};
+    unsigned char footerBytes[4] = {'$','$','o','7'};
+
+    uint8_t checksum = 0;
+    uint8_t* ptr = (uint8_t*)&sys;
+    for (size_t i = 0; i <sizeof(sys); i++){
+      checksum +=ptr[i];
+    }
+
+    file.write(headerBytes, sizeof(headerBytes));
+    size_t bytesWritten = file.write((const uint8_t *)&sys, sizeof(sys));
+    file.write(&checksum,1);
+    file.write(footerBytes, sizeof(footerBytes));
+    file.flush();
+    file.close();
+  }
 }
