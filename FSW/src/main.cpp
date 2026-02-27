@@ -3,7 +3,6 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <STM32RTC.h>
-#include "rockblock_9704.h"
 #include "pins.h"
 #include "data.h"
 
@@ -11,44 +10,48 @@
 #define MIN_TE2_WAIT 10    // Wiat at least 10 seconds before arming TE-2, just to make sure the payload isn't triggered early when starting
 
 
-//Globals
-JsonDocument doc;
-FSW_SYSTEM sys;
-STM32RTC& rtc = STM32RTC::getInstance();
+//Globals (Variables)
+JsonDocument doc; //Variable
+FSW_SYSTEM sys; //Variable
+STM32RTC& rtc = STM32RTC::getInstance(); //Variable 
 
 
 //Prototypes
-void te2(void);
+void te2(void); //
 
 
 void setup() {
   //Set Mission Start time
-  sys.mission_start.setFromRTC(rtc);
+  sys.mission_start.setFromRTC(rtc); //The mission start time is set from RTC
 
-  //Setup Pins
-  pinMode(TE2_ISOLATED, INPUT);
-  pinMode(ENA_IRIDIUM, OUTPUT);
-  pinMode(ENA_SPECTRO, OUTPUT);
-  pinMode(LED_POWER, OUTPUT);
-  pinMode(LED_HRTBT, OUTPUT);
+  //Setup Pins (prepares pins to be either inputs or outputs)
+  pinMode(TE2_ISOLATED, INPUT); //The Timed event (TE) The TE2 activates the iridium and the spectrometers
+  pinMode(ENA_IRIDIUM, OUTPUT); //The flight computer outputs the signal to the iridium and spectrometer 
+  pinMode(ENA_SPECTRO, OUTPUT); // output signal to the ENA_Spectro (spectrometer)
+  pinMode(LED_POWER, OUTPUT); //  The LED power indicates that the whole circuit is on
+  pinMode(LED_HRTBT, OUTPUT); //LED heartbeat 
   pinMode(LED_SDACTIVE, OUTPUT);
   pinMode(LED_ERROR, OUTPUT);
   pinMode(LED_COMM, OUTPUT);
 
-  digitalWrite(ENA_IRIDIUM, LOW);
-  digitalWrite(ENA_SPECTRO, LOW);
+  digitalWrite(ENA_IRIDIUM, LOW); //pins are off in this section 
+  digitalWrite(ENA_SPECTRO, LOW); //pins are off
 
-  digitalWrite(LED_POWER, HIGH);
-  digitalWrite(LED_HRTBT, LOW);
-  digitalWrite(LED_SDACTIVE, LOW);
-  digitalWrite(LED_ERROR, LOW);
-  digitalWrite(LED_COMM, LOW);
+  digitalWrite(LED_POWER, HIGH);      //This is turned on
+  digitalWrite(LED_HRTBT, LOW);      //pins are off
+  digitalWrite(LED_SDACTIVE, LOW);  //pins are off
+  digitalWrite(LED_ERROR, LOW);    //pins are off
+  digitalWrite(LED_COMM, LOW);    //pins are off
 
   //Interupt 
-  attachInterrupt(TE2_ISOLATED, te2, CHANGE);
+  attachInterrupt(TE2_ISOLATED, te2, CHANGE); // This takes the TE2 signal, telling the computer to watch when to begin the TE2 program (this TE2 program is a function)
   // Start I2C
-  Wire.begin();
+  Wire.begin(); //tells the computer to start the I2C
   //Setup SD Card
+
+  //save data file function
+
+
 }
 
 void loop() {
@@ -78,6 +81,7 @@ void saveData(String filename){
       checksum +=ptr[i];
     }
 
+    //This is the block of code that prepares the SD card
     file.write(headerBytes, sizeof(headerBytes));
     size_t bytesWritten = file.write((const uint8_t *)&sys, sizeof(sys));
     file.write(&checksum,1);
@@ -86,6 +90,3 @@ void saveData(String filename){
     file.close();
   }
 }
-
-void sendToIridium(){
-};
