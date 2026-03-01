@@ -84,6 +84,8 @@ int dummydata[4096] = { 2974, 110, 190, 304, 420, 469, 516, 503, 467, 449, 387, 
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
+void option1();
+
 void setup() {
   Serial1.begin(9600);
 
@@ -91,11 +93,25 @@ void setup() {
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  char dummyArray[4096];
-  for (int i = 0; i<4096; i++){
-    dummyArray[i] = (char)dummydata[i];
-  }
-  Serial1.write(dummyArray);
+option1();
+delay(100);
   
+}
+
+
+void option1(){
+    // put your main code here, to run repeatedly:
+  char dummyArray[4102]; // Buffer for five extra bytes
+  int checksum = 0;
+  dummyArray[0] = 'b';
+  dummyArray[1] = 'd';
+  for (int i = 0; i<4096; i++){
+    checksum += dummydata[i];
+    dummyArray[i+2] = (char)dummydata[i];
+  }
+  dummyArray[4100] = (char)checksum;
+  dummyArray[4101] = 'e';
+  dummyArray[4102] = 'd';
+
+  Serial1.write(dummyArray);
 }
