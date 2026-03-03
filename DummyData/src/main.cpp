@@ -99,19 +99,31 @@ delay(100);
 }
 
 
-void option1(){
-    // put your main code here, to run repeatedly:
-  char dummyArray[4102]; // Buffer for five extra bytes
-  int checksum = 0;
-  dummyArray[0] = 'b';
-  dummyArray[1] = 'd';
-  for (int i = 0; i<4096; i++){
-    checksum += dummydata[i];
-    dummyArray[i+2] = (char)dummydata[i];
-  }
-  dummyArray[4100] = (char)checksum;
-  dummyArray[4101] = 'e';
-  dummyArray[4102] = 'd';
+void option1() {
+  uint8_t checksum = 0;
 
-  Serial1.write(dummyArray);
+  // 1. Send Header
+  Serial1.write('b');
+  Serial1.write('d');
+  Serial1.write('a'); // Spectrometer id A and b
+
+  // 2. Send Data and calculate checksum on the fly
+  for (int i = 0; i < 4096; i++) {
+    uint8_t lowByte = dummydata[i] & 0xFF;
+    uint8_t highByte = (dummydata[i] >> 8) & 0xFF;
+
+    // Send high byte then low byte (Big Endian)
+    Serial1.write(highByte);
+    Serial1.write(lowByte);
+
+    // Add both bytes to the checksum
+    checksum += highByte;
+    checksum += lowByte;
+  }
+
+  // 3. Send Footer
+  Serial1.write(checksum);
+  Serial1.write('e');
+  Serial1.write('d');
 }
+
