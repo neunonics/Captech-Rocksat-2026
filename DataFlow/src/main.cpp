@@ -13,7 +13,6 @@ void setup() {
 }
 
 void loop() {
-    // 1. CATCH THE FIREHOSE
     if (SerialA.available()) {
         File dataFile = SD.open("gamma.txt", FILE_WRITE);
         
@@ -29,18 +28,12 @@ void loop() {
             }
             dataFile.close(); // Save to SD
             
-            // 2. BLEED TO THE STRAW
-            // Now that the data is safe on the SD, we read it back 
-            // and send it slowly to Serial B
+
             File readFile = SD.open("gamma.txt");
             if (readFile) {
-                // Seek to the start of the last entry or just send the whole file
-                // For this example, we'll just send the line we just wrote
-                // (This part requires tracking file offsets for efficiency)
+
                 while (readFile.available()) {
                     SerialB.write(readFile.read());
-                    // Serial B is so slow, we don't even need a delay; 
-                    // the HardwareSerial buffer will handle the pacing.
                 }
                 readFile.close();
             }
