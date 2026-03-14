@@ -104,12 +104,49 @@ struct FSW_PREDICTION{
     uint8_t spectrumID;
     float probability;
     char prediction[40];
+
+    String outputToString(){
+        return "pri: "+ String(priority) +
+        ", id: " + String(spectrumID) +
+        ", prob: " + String(probability) +
+        ", msg: "+String(prediction);
+    }
+
+    void outputToIridium(char* buffer){
+        buffer[0] = priority;
+        buffer[1] = spectrumID;
+        memcpy(&buffer[2], &probability, sizeof(float));
+        memset(&buffer[6], 0, 40);
+        strncpy((char*)&buffer[6], prediction, 39);
+    }
+
 };
 
 struct FSW_POWER{
     float voltage;
     float current;
     float power;
+
+    String outputToString(){
+        return String(voltage) + ", " + String(current) + ", " + String(power);
+    }
+
+    void outputToIridium(char* buffer){
+
+        uint16_t v = (uint16_t)(voltage * 100);
+        uint16_t c = (uint16_t)(current * 100);
+        uint16_t p = (uint16_t)(power * 100);
+
+        buffer[0] = (v >> 8) & 0xFF;
+        buffer[1] = v & 0xFF;
+        buffer[2] = (c >> 8) & 0xFF;
+        buffer[3] = c & 0xFF;
+        buffer[4] = (p >> 8) & 0xFF;
+        buffer[5] = p & 0xFF;
+    
+    }
+
+
 };
 
 struct FSW_EDS{
