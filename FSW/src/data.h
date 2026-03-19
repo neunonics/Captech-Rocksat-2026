@@ -126,7 +126,7 @@ struct FSW_SYSTEM{
     FSW_STATUS status;
     FSW_DATETIME mission_start;
     FSW_GAMMA_DATA OpenGammaData;
-
+    FSW_PREDICTION AI;
     FSW_SYSTEM(){
         status.bno1_connected =         false;
         status.bno2_connected =         false;
