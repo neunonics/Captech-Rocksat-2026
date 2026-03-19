@@ -1,7 +1,8 @@
 #include <Arduino.h>
 #include <rockblock_9704.h>
 
-HardwareSerial DBG(USART2); 
+HardwareSerial Serial6(PA12, PA11);
+HardwareSerial Serial2(PA3, PA2);
 
 #define RB_SERIAL     Serial1
 #define RB_ENABLE_PIN PA4  // I_EN

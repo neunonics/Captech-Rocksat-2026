@@ -1,7 +1,7 @@
 
 #include "data.h"
 
-void flagsToJson(JsonDocument& json, FSW_DATETIME datetime){
+void dateToJson(JsonDocument& json, FSW_DATETIME datetime){
 JsonObject dt = json["datetime"];
 dt["hour"] = datetime.hour;
 dt["second"] = datetime.second;
@@ -10,6 +10,10 @@ dt["day"] = datetime.day;
 dt["month"] = datetime.month;
 dt["year"] = datetime.year;
 return;
+}
+
+void spectrumToJson(JsonDocument &json, FSW_GAMMA_DATA gd){
+    JsonObject gammaData = json[""]
 }
 
 int saveJsonData(JsonDocument json, String filename){
@@ -22,6 +26,11 @@ int saveJsonData(JsonDocument json, String filename){
     }
 
     return 1;
+}
+
+void formatSpectrumForIridium(FSW_GAMMA_DATA gd)
+{
+
 }
 
 FSW_GAMMA_DATA fetchSpectrum(int spect, HardwareSerial *uart, FSW_DATETIME dt) {

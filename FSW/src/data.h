@@ -44,6 +44,7 @@ struct FSW_GAMMA_DATA {
             bins[i] = 0;
         }
     };
+
 };
 
 struct FSW_STATUS{
