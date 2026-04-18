@@ -18,6 +18,7 @@
 #include "epds.h" // EPDS HEADER
 #include "fsw.h" // FSW HEADER
 #include "comm.h" // COMMS HEADER
+#include "inst.h" // INSTRUMENTS HEADER
 
 // CONSTANTS & DEFINES
 #define TE2_WAIT 10000    // Wait at least 10 seconds before arming TE-2, just to make sure the payload isn't triggered early when starting
@@ -26,20 +27,16 @@
 EPDS epds; // EPDS struct instance
 FSW fsw; // FSW struct instance
 COMM comm; // COMMS struct instance
-
-HardwareSerial debug_Serial(DEBUG_UART_RX, DEBUG_UART_TX)
-HardwareSerial comms_Serial(COMM_RX, COMM_TX);
-HardwareSerial jetson_Serial(JETSON_RX, JETSON_TX);
-HardwareSerial spec_A_Serial(SPEC_A_RX, SPEC_A_TX);
-HardwareSerial spec_B_Serial(SPEC_B_RX, SPEC_B_TX);
-
+Histogram     hist1, hist2; // Define histogram instances
+CombinedHistogram combined; // Define combined histogram instance
 
 // Functions
-void te2(FSW &fsw); // Interrupt function that runs when TE-2 is triggered
+void te2(); // Interrupt function that runs when TE-2 is triggered
 
 void setup() {
   initPins(); // Setup Pins
   digitalWrite(LED_PWR, HIGH); // Turn on power led
+  fsw.lastHeartbeatTime = now(); // Initialize last heartbeat time
 
   Serial.begin(115200); //Starts the serial monitor for debugging
   Wire.begin(); //tells the computer to start the I2C
@@ -62,6 +59,7 @@ void setup() {
     Serial.println("SD card initialization failed after 3 attempts!");
   } else {
     Serial.println("SD card initialization done.");
+
   }
 
   // -- Initialize RTC -- //
@@ -88,6 +86,13 @@ void setup() {
     Serial.println("BNO055 initialization done.");
   }
 
+  // --Initialize Spectrometers A & B -- //
+  Serial.println("Initializing Spectrometers A & B...");
+
+  SPEC_InitUntilConnected();
+  SPEC_SyncReboot();
+
+
   // -- Initialize EPDS -- //
   Serial.println("Initializing EPDS...");
   for (int attempt = 0; attempt < 3 && !epds.initialized; attempt++) {
@@ -102,7 +107,7 @@ void setup() {
   // -- Initialize COMMS -- //
   Serial.println("Initializing COMMS...");
   attachInterrupt(TE2_SIGNAL, te2, CHANGE); // This takes the TE2 signal, telling the computer to watch when to begin the TE2 program (this TE2 program is a function)
-  if(digitalRead(I_BTD) == HIGH) {
+  if(digitalRead(COMM_BTD) == HIGH) {
     Serial.println("COMMS may have been enabled in prior run. Powering down COMMS to reset...");
     commShutDown(comm); // Not guaranteed, but likely to work!
   }
@@ -119,6 +124,20 @@ void setup() {
 }
 
 void loop() {
+  if(!fsw.RTC_RDY) {
+    Serial.println("ERROR: Cannot log time until RTC is ready.");
+  } else {
+    // -- Log Time -- //
+    fsw.currentMissionTime = now(); // Get the current time
+    Serial.print("Current Mission Time: ");
+    Serial.println(fsw.currentMissionTime);
+    fsw.lineToSave += String(fsw.currentMissionTime) + ";"; // Log time as delta from mission start
+  }
+
+  if (fsw.currentMissionTime - fsw.lastHeartbeatTime >= HEARTBEAT_INTERVAL) {
+    fsw.lastHeartbeatTime = fsw.currentMissionTime; // Update last heartbeat time
+    digitalWrite(LED_HRTBT, !digitalRead(LED_HRTBT)); // Heartbeat LED On
+  }
   digitalWrite(LED_HRTBT, HIGH); // Heartbeat LED On
   digitalWrite(LED_HRTBT, LOW); // THeartbeat LED Off
   
@@ -126,17 +145,6 @@ void loop() {
   
   if(fsw.LAUNCH){
     // ODIN has been powered & no TE-2 Signal (LAUNCH Mode)
-    fsw.lineToSave = ""; // Clear lineToSave for next SD card line
-
-    if(!fsw.RTC_RDY) {
-      Serial.println("ERROR: Cannot log time until RTC is ready.");
-    } else {
-      // -- Log Time -- //
-      fsw.currentMissionTime = now(); // Get the current time
-      Serial.print("Current Mission Time: ");
-      Serial.println(fsw.currentMissionTime);
-      fsw.lineToSave += String(fsw.currentMissionTime) + ";"; // Log time as delta from mission start
-    }
 
     if(!fsw.ATTITUDE_RDY) {
       Serial.println("ERROR: Cannot log attitude until BNO055 is ready.");
@@ -171,37 +179,57 @@ void loop() {
     
 
     // -- Save to SD Card -- //
-    // !!! DOUBLE CHECK, IT WAS DONE BY AI !!!
-    if(fsw.SD_RDY) {
+    if(!fsw.SD_RDY) {
+      Serial.println("ERROR: Cannot log data until SD card is ready.");
+    } else {
       // Save lineToSave to SD card
-      File dataFile = SD.open("datalog.txt", FILE_WRITE);
-      if (dataFile) {
-        dataFile.println(fsw.lineToSave);
-        dataFile.close();
+      fsw.launchFile = SD.open("datalog.txt", FILE_WRITE);
+      if (fsw.launchFile) {
+        fsw.launchFile.println(fsw.lineToSave);
+        fsw.launchFile.close();
         Serial.println("Data logged to SD card: " + fsw.lineToSave);
       } else {
         Serial.println("ERROR: Could not open datalog.txt for writing.");
       }
-    } else {
-      Serial.println("ERROR: Cannot log data until SD card is ready.");
     }
   }
   if(fsw.SCIENCE){
     // TE-2 has been triggered (Science Mode)
+    SPEC_ReadHistogram1(hist1);
+    SPEC_ReadHistogram2(hist2);
 
+    SPEC_CombineHistograms(hist1, hist2, combined);
+
+    SPEC_ScrubNaN(combined);
+
+    SPEC_TransmitCombined(combined);
+
+    SPEC_CheckQuality(hist1);
+    SPEC_CheckQuality(hist2);
+    SPEC_HandleFaults(hist1, hist2);
+
+    if(!fsw.SD_RDY) {
+      Serial.println("ERROR: Cannot log data until SD card is ready.");
+    } else {
+      // Save lineToSave to SD card
+      fsw.scienceFile = SD.open("scienceFile.txt", FILE_WRITE);
+      if (fsw.scienceFile) {
+        fsw.scienceFile.println(fsw.lineToSave);
+        fsw.scienceFile.close();
+        Serial.println("Data logged to SD card: " + fsw.lineToSave);
+      } else {
+        Serial.println("ERROR: Could not open scienceFile.txt for writing.");
+      }
+    }
   }
 
 }
 
-void te2(FSW &fsw){
+void te2(){
   // Interrupt function that runs when TE-2 is triggered
   delay(TE2_WAIT); // Wait at least 10 seconds before
   fsw.LAUNCH = false; // TE-2 has been triggered (Science Mode)
   fsw.SCIENCE = true; // TE-2 has been triggered (Science Mode)
-
-  //original dan work
-  //sys.status.enable_iridium = true;
-  //sys.status.enable_spectrometer = true;
-  //digitalWrite(ENA_SPECTRO, HIGH);
-  //digitalWrite(ENA_IRIDIUM, HIGH);
+  digitalWrite(LED_COMM, HIGH); // Turn on COMMS LED to indicate TE-2 has been triggered and COMMS is active
+  SPEC_SyncReboot();
 }

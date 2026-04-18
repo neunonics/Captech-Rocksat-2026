@@ -1,4 +1,7 @@
 #include <TimeLib.h> // RTC LIBRARY
+#include <SD.h>
+#include <SPI.h>
+
 #include "fsw.h" // FSW HEADER
 
 // -- INIT FUNCTIONS -- //
@@ -34,6 +37,10 @@ bool initRTC(FSW &fsw) {
   return true;
 }
 
+time_t getTeensy3Time() {
+  return Teensy3Clock.get();
+}
+
 // Function to initialize BNO055 sensors
 bool initBNO055(FSW &fsw) {
   // Initialize BNO055 A
@@ -56,7 +63,6 @@ void initPins() {
   pinMode(LED_PWR, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(LED_COMM, OUTPUT);
-  pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_ERROR, OUTPUT);
   pinMode(LED_SDACTIVE, OUTPUT);
 
