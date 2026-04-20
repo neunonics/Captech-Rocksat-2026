@@ -18,6 +18,8 @@
 #define BNO055_ADDRESS_A 0x28
 #define BNO055_ADDRESS_B 0x29
 
+#define HEARTBEAT_INTERVAL 100
+
 struct FSW {
     // -- FSW STATUS -- //
     bool LAUNCH; // TE-2 has not been triggered (Launch Mode)
@@ -38,6 +40,7 @@ struct FSW {
     // -- FSW TIMERS -- //
     unsigned long missionStartTime; // Start Time of Mission (s)
     unsigned long currentMissionTime; // Current Time of Mission (s)
+    unsigned long lastHeartbeatTime;
 };
 
 

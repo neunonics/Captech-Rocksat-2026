@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+
+#define BUILTIN_SDCARD 254
 // -- FSW -- //
 #define TE2_SIGNAL          45  // RockSat TE-2 Signal to Start Science Operations (23_19_CRX1_MCLK1)
 
