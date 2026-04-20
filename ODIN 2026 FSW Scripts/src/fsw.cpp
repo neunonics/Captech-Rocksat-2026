@@ -2,6 +2,7 @@
 #include <SD.h>
 #include <SPI.h>
 
+
 #include "fsw.h" // FSW HEADER
 
 // -- INIT FUNCTIONS -- //
@@ -25,7 +26,7 @@ bool initSDCard(FSW &fsw) {
 
 // Function to initialize RTC & Mission Start Time
 bool initRTC(FSW &fsw) {
-  setSyncProvider(getTeensy3Time); // Set Teensy RTC as the time provider
+  setSyncProvider([]() -> time_t { return (time_t)rtc_get(); }); // Set Teensy RTC as the time provider
   delay(100); // Short delay to ensure RTC is ready
   if (timeStatus() != timeSet) {
     return false; // Unable to sync with the RTC

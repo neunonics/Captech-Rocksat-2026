@@ -27,8 +27,8 @@
 EPDS epds; // EPDS struct instance
 FSW fsw; // FSW struct instance
 COMM comm; // COMMS struct instance
-Histogram     hist1, hist2; // Define histogram instances
-CombinedHistogram combined; // Define combined histogram instance
+extern Histogram     hist1, hist2; // Define histogram instances
+extern CombinedHistogram combined; // Define combined histogram instance
 
 // Functions
 void te2(); // Interrupt function that runs when TE-2 is triggered
@@ -38,7 +38,8 @@ void setup() {
   digitalWrite(LED_PWR, HIGH); // Turn on power led
   fsw.lastHeartbeatTime = now(); // Initialize last heartbeat time
 
-  Serial.begin(115200); //Starts the serial monitor for debugging
+  Serial.begin(9600); //Starts the serial monitor for debugging
+  Serial.println("Serial Started...");
   Wire.begin(); //tells the computer to start the I2C
   
   //FSW Startup Message
@@ -49,7 +50,7 @@ void setup() {
   initCOMMStatus(comm); // Initialize COMMS status variables (ENBL_STATUS, TX_ACTIVE, messagesSent)
 
   // -- Initialize SD Card -- //
-  while (!SD.begin()) { ; } // Wait for serial port to connect
+  while (!SD.begin(BUILTIN_SDCARD)) { Serial.println("Trying to start SD Card..."); delay(10+00);} // Wait for serial port to connect
 
   Serial.println("Initializing SD card...");
   for (int attempt = 0; attempt < 3 && !fsw.SD_RDY; attempt++) {
