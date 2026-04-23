@@ -22,10 +22,10 @@
 
 #define SPEC1_SERIAL            Serial6     /* Spectrometer 1 – UART6       */
 #define SPEC2_SERIAL            Serial3     /* Spectrometer 2 – UART3       */
-#define OUTPUT_SERIAL           Serial5     /* Combined histogram TX target  */
+#define OUTPUT_SERIAL           Serial8     /* Combined histogram TX target  */
 
 #define SPEC_BAUD               115200
-#define OUTPUT_BAUD             9600
+#define OUTPUT_BAUD             115200
 
 /** Number of energy bins per spectrometer */
 #define HISTOGRAM_BINS          4096
@@ -161,6 +161,6 @@ void       SPEC_HandleFaults(Histogram &hist1, Histogram &hist2);
 void       SPEC_AcquisitionLoop(void);
 
 /** Poll OUTPUT_SERIAL for a new line of inference from ORIN. */
-void       ORIN_Poll(void);
+String       ORIN_Poll(void);
 
 #endif /* INST_H */

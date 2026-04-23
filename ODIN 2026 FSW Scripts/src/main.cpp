@@ -24,6 +24,8 @@
 #define TE2_WAIT 10000    // Wait at least 10 seconds before arming TE-2, just to make sure the payload isn't triggered early when starting
 #define TEST_WAIT 1000    // Wait 1 second for testing
 
+#define TE2_TRIGGER_WAIT 1000
+
 // Globals
 EPDS epds; // EPDS struct instance
 FSW fsw; // FSW struct instance
@@ -41,9 +43,7 @@ void setup() {
   Serial.begin(9600); //Starts the serial monitor for debugging
   OUTPUT_SERIAL.begin(OUTPUT_BAUD); // Serial for transmitting combined histogram data
 
-  while(!Serial) { // Wait for serial port to connect
-    delay(10);
-  }
+  delay(1000); // Short delay to ensure serial is ready
 
   Serial.println("Serial Started...");
   Wire.begin(); //tells the computer to start the I2C
@@ -150,15 +150,13 @@ void loop() {
 
   if ((fsw.currentMissionTime - fsw.lastHeartbeatTime) >= HEARTBEAT_INTERVAL) {
     fsw.lastHeartbeatTime = now(); // Update last heartbeat time
-    pinMode(LED_HRTBT, INPUT); // Set heartbeat LED pin as output
-    if (digitalRead(LED_HRTBT) == LOW) {
-      pinMode(LED_HRTBT, OUTPUT); // Set heartbeat LED pin as output
-      digitalWrite(LED_HRTBT, HIGH); // Heartbeat LED Off
-    } else {
-      pinMode(LED_HRTBT, OUTPUT); // Set heartbeat LED pin as output
+
+    if(fsw.HRTBT) {
       digitalWrite(LED_HRTBT, LOW); // Heartbeat LED On
+    } else {
+      digitalWrite(LED_HRTBT, HIGH); // Heartbeat LED Off
     }
-    digitalWrite(LED_HRTBT, !digitalRead(LED_HRTBT)); // Heartbeat LED On
+    fsw.HRTBT = !fsw.HRTBT; // Flip heartbeat state for next toggle
   }
   
   readAttitude(fsw); // Checks if BNO055s are ready and reads attitude data if they are, otherwise logs error message
@@ -172,7 +170,7 @@ void loop() {
     // TE-2 has been triggered (Science Mode)
 
     // -- See if ORIN has new prediction -- //
-    ORIN_Poll();
+    fsw.AIToSave = ORIN_Poll();
 
     // -- Read Spectrometer Histograms -- //
     Serial.println("[SPEC] Reading spectrometer histograms...");
@@ -197,10 +195,31 @@ void loop() {
 
   // -- Log Data to SD Card -- //
   logData(fsw); // !! END OF MAIN LOOP !!
+
+  //Make sure te2 is high for 500 ms
+   //if(digitalRead(TE2_SIGNAL) == LOW){ fsw.lastHighDetetected = fsw.currentMissionTime;}
+   //else()
+  //{
+  //// Interrupt function that runs when TE-2 is triggered
+    //Serial.println("[FSW] TE-2 Signal Read! Payload now transitioning to Science Mode...");
+    //delay(TE2_WAIT); // Wait at least 10 seconds before
+    //fsw.LAUNCH = false; // TE-2 has been triggered (Science Mode)
+    //fsw.SCIENCE = true; // TE-2 has been triggered (Science Mode)
+    //digitalWrite(LED_COMM, HIGH); // Turn on COMMS LED to indicate TE-2 has been triggered and COMMS is now primed to XMIT
+    //SPEC_SyncReboot();
+    //fsw.fswToSave = ""; // Reset FSW data to save
+    //fsw.epdsToSave = ""; // Reset EPDS data to save
+    //fsw.histogramAToSave = ""; // Reset histogram data to save
+   // fsw.histogramBToSave = ""; // Reset histogram data to save
+    //fsw.AIToSave = ""; // Reset AI data to save
+    //Serial.println("[FSW] TE-2 Setup Finished! Payload now in Science Mode...");
+  //}
 }
 
 void te2(){
+
   if (fsw.LAUNCH) {
+    //fsw.TE2_TRIGGERED
     // Interrupt function that runs when TE-2 is triggered
     Serial.println("[FSW] TE-2 Signal Read! Payload now transitioning to Science Mode...");
     delay(TE2_WAIT); // Wait at least 10 seconds before

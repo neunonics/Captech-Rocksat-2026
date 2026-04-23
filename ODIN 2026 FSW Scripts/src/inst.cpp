@@ -266,10 +266,12 @@ SpecStatus SPEC_LogCombinedSD(const CombinedHistogram &hist)
 void SPEC_TransmitCombined(const CombinedHistogram &hist)
 {
     for (int i = 0; i < HISTOGRAM_BINS; ++i) {
-        //if (i > 0) OUTPUT_SERIAL.print(';');
+        //Serial.print(hist.bins[i]);
+        //Serial.print(';');
         OUTPUT_SERIAL.print(hist.bins[i]);
         OUTPUT_SERIAL.print(";");
     }
+    Serial.print("\r\n");
     OUTPUT_SERIAL.print("\r\n");
 
     Serial.printf("[SPEC] Transmitted %d bins\n", HISTOGRAM_BINS);
@@ -323,7 +325,7 @@ void SPEC_HandleFaults(Histogram &hist1, Histogram &hist2)
 static char orinBuf[INFERENCE_BUF_LEN];
 static size_t orinIdx = 0;
 
-void ORIN_Poll(void)
+String ORIN_Poll(void)
 {
     while (OUTPUT_SERIAL.available())
     {
@@ -341,6 +343,7 @@ void ORIN_Poll(void)
             orinBuf[orinIdx++] = (char)c;
         }
     }
+    return String(inference);
 }
 
 Histogram         hist1, hist2;

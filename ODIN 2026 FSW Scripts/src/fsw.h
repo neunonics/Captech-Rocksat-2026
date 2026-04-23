@@ -30,6 +30,8 @@ struct FSW {
     bool ATTITUDE_RDY; // BNO055s have been initialized and are ready to log attitude data
     bool RTC_RDY; // RTC has been initialized and is ready to provide time data
     bool SD_RDY; // SD Card has been initialized and is ready to log data
+    bool HRTBT; // Heartbeat LED state (true = on, false = off)
+    bool TE2_TRIGGERED; //TE2 Was triggered
 
     // -- FSW FILES -- //
     File currentFile; // Current File for SD Card
@@ -53,11 +55,13 @@ struct FSW {
     imu::Quaternion quat_B; // Quaternion from BNO055 B
     int8_t temp_B; // Temperature from BNO055 B
 
+
     // -- FSW TIMERS -- //
     unsigned long missionStartTime; // Start Time of Mission (s)
     unsigned long currentMissionTime; // Current Time of Mission (s)
     unsigned long lastHeartbeatTime; // Last Time Attitude Data was Logged (s)
     unsigned long lastSDCardSave; // Last Time SD Card Data was Saved (s)
+    unsigned long lastHighDetetected;
 };
 
 
