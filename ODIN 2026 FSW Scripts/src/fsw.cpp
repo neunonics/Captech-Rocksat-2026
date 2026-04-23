@@ -14,6 +14,8 @@ void initFSWStatus(FSW &fsw) {
   fsw.ATTITUDE_RDY = false; // BNO055s have been initialized and are ready to log attitude data
   fsw.RTC_RDY = false; // RTC has been initialized and is ready to provide time data
   fsw.SD_RDY = false; // SD Card has been initialized and is ready to log data
+  fsw.HRTBT = false; // Heartbeat LED state (true = on, false = off)
+  fsw.TE2_TRIGGERED = false; // TE2 has been triggered 
 }
 
 bool initSDCard(FSW &fsw) {
@@ -221,9 +223,9 @@ void logData(FSW &fsw) {
       if (fsw.currentFile && SD.mediaPresent()) {
         fsw.currentFile.print(fsw.fswToSave); // Write FSW data to SD card
         fsw.currentFile.print(fsw.epdsToSave); // Write EPDS data to
+        fsw.currentFile.print(fsw.AIToSave); // Write AI data to SD
         fsw.currentFile.print(fsw.histogramAToSave); // Write histogram data to SD card
         fsw.currentFile.print(fsw.histogramBToSave); // Write histogram data to SD card
-        fsw.currentFile.print(fsw.AIToSave); // Write AI data to SD
         fsw.currentFile.println(); // Newline after each set of data
         fsw.currentFile.close();
         Serial.println("[FSW] Data logged to SD card!");

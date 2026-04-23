@@ -31,7 +31,7 @@
 
 // -- COMM -- //
 #define COMM_TX             7    // FSW -> COMM (7_RX2_OUT1A)
-#define COMM_RX             8   // COMM -> (8_TX2_IN1)
+#define COMM_RX             8    // COMM -> (8_TX2_IN1)
 #define COMM_EN             22   // COMM Enable Pin (22_A8_CTX1)
 #define COMM_BTD            13   // COMM Booted Pin (13_SCK_LED)
 #define XMIT_STAT           3    // COMM Transmit (3_LRCLK2)
