@@ -22,13 +22,13 @@
 
 #define SPEC1_SERIAL            Serial6     /* Spectrometer 1 – UART6       */
 #define SPEC2_SERIAL            Serial3     /* Spectrometer 2 – UART3       */
-#define OUTPUT_SERIAL           Serial1     /* Combined histogram TX target  */
+#define OUTPUT_SERIAL           Serial5     /* Combined histogram TX target  */
 
-#define SPEC_BAUD               115200UL
-#define OUTPUT_BAUD             115200UL
+#define SPEC_BAUD               115200
+#define OUTPUT_BAUD             9600
 
 /** Number of energy bins per spectrometer */
-#define HISTOGRAM_BINS          1024
+#define HISTOGRAM_BINS          4096
 
 /** Max ms to wait for a single '\n'-terminated line */
 #define UART_LINE_TIMEOUT_MS    500
@@ -43,7 +43,7 @@
 #define MIN_TOTAL_COUNTS        10UL
 
 /** Fraction of empty bins above which the histogram is flagged sparse */
-#define MAX_ZERO_BIN_FRACTION   0.95f
+#define MAX_ZERO_BIN_FRACTION   0.99f
 
 /** Teensy 4.1 built-in SD card (SDIO) */
 #define SD_CS_PIN               BUILTIN_SDCARD
@@ -51,6 +51,10 @@
 #define SD_LOG_FILE_1           "spec1.csv"
 #define SD_LOG_FILE_2           "spec2.csv"
 #define SD_LOG_FILE_COMBINED    "combined.csv"
+
+#define INFERENCE_BUF_LEN 256
+extern char inference[INFERENCE_BUF_LEN];
+
 
 /* ─────────────────────────────────────────────────────────────
  * Types
@@ -73,6 +77,31 @@ typedef enum : uint8_t {
     FAULT_OVERFLOW    = (1 << 4), /* bin value implausibly large            */
 } FaultFlags;
 
+inline FaultFlags operator|(FaultFlags a, FaultFlags b)
+{
+    return static_cast<FaultFlags>(
+        static_cast<uint8_t>(a) | static_cast<uint8_t>(b)
+    );
+}
+
+inline FaultFlags& operator|=(FaultFlags& a, FaultFlags b)
+{
+    a = a | b;
+    return a;
+}
+
+inline FaultFlags operator&(FaultFlags a, FaultFlags b)
+{
+    return static_cast<FaultFlags>(
+        static_cast<uint8_t>(a) & static_cast<uint8_t>(b)
+    );
+}
+
+inline bool anyFault(FaultFlags f)
+{
+    return static_cast<uint8_t>(f) != 0;
+}
+
 struct Histogram {
     uint32_t   bins[HISTOGRAM_BINS];
     uint32_t   total_counts;
@@ -82,7 +111,7 @@ struct Histogram {
 };
 
 struct CombinedHistogram {
-    float    bins[HISTOGRAM_BINS]; /* float, NaN-scrubbed, ready to TX */
+    uint32_t    bins[HISTOGRAM_BINS]; /* float, NaN-scrubbed, ready to TX */
     uint32_t total_counts;
 };
 
@@ -130,5 +159,8 @@ void       SPEC_HandleFaults(Histogram &hist1, Histogram &hist2);
 
 /** Main acquisition loop – call from loop() or a FreeRTOS task. */
 void       SPEC_AcquisitionLoop(void);
+
+/** Poll OUTPUT_SERIAL for a new line of inference from ORIN. */
+void       ORIN_Poll(void);
 
 #endif /* INST_H */
