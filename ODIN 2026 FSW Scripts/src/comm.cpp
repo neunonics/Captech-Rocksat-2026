@@ -13,17 +13,17 @@ void initCOMMStatus(COMM &comm){
 
 bool initCOMM(COMM &comm){
     // Initialize COMMS pins
-    digitalWrite(COMM_EN, HIGH); // Enable PIN High to enable COMMS
+    digitalWrite(COMM_EN, HIGH); // Bring Iridium Enable Pin HIGH to enable COMMS XMIT
 
-    unsigned long startTime = millis(); // Setup a timeout to prevent getting stuck if COMMS fail to enable
-    const unsigned long timeout = 10000; // 10 second timeout for COMMS to enable
+    unsigned long startTime = millis(); // Setup a timeout to prevent getting stuck if COMMS fails to enable
+    const unsigned long timeout = 15000; // 15 second timeout for COMMS to enable
 
-    while (digitalRead(COMM_BTD) == LOW) { // Wait for COMMS to enable
+    while (digitalRead(COMM_BTD) == LOW) { // Wait for COMMS to enable (read 9704 Boot State)
         if (millis() - startTime > timeout) {
-            Serial.println("ERROR: COMMS failed to enable within timeout period.");
+            Serial.println("[COMM] ERROR: COMMS failed to enable within timeout period.");
             return false; // Return false if COMMS fail to enable within the timeout period
         }
-        delay(100); // Short delay to avoid busy-waiting
+        delay(100); // Short delay to avoid sampling too quickly
     }
 
     comm.ENBL_STATUS = true; // Update COMMS status to enabled
@@ -35,15 +35,15 @@ bool commShutDown(COMM &comm){
     rbEnd(); // End RockBLOCK communication
     digitalWrite(COMM_EN, LOW); // Disable COMMS
 
-    unsigned long startTime = millis(); // Setup a timeout to prevent getting stuck if COMMS fail to enable
-    const unsigned long timeout = 10000; // 10 second timeout for COMMS to enable
+    unsigned long startTime = millis(); // Setup a timeout to prevent getting stuck if COMMS fails to disable
+    const unsigned long timeout = 15000; // 15 second timeout for COMMS to enable
 
-    while (digitalRead(COMM_BTD) == HIGH) { // Wait for COMMS to disable
+    while (digitalRead(COMM_BTD) == HIGH) { // Wait for COMMS to disable (read 9704 Boot State)
         if (millis() - startTime > timeout) {
-            Serial.println("ERROR: COMMS failed to disable within timeout period.");
+            Serial.println("[COMM] ERROR: COMMS failed to disable within timeout period.");
             return false; // Return false if COMMS fail to disable within the timeout period
         }
-        delay(100); // Short delay to avoid busy-waiting
+        delay(100); // Short delay to avoid sampling too quickly
     }
 
     comm.ENBL_STATUS = false; // Update COMMS status to disabled

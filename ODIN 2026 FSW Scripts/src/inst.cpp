@@ -2,55 +2,45 @@
  * inst.cpp
  * Teensy 4.1 – Dual Gamma Spectrometer Interface
  *
- * Protocol assumptions (adjust to match your device's datasheet):
- *   Probe:           send "ID?\r\n"       → expect line starting with "OK"
- *   Reboot:          send "REBOOT\r\n"    → device resets
- *   Request data:    send "GET_HISTOGRAM\r\n"
- *   Response format:
- *       "DATA:\r\n"
- *       "<uint32 count>\r\n"   × HISTOGRAM_BINS
- *       "END\r\n"
+ * Stream format (continuous, no request needed):
+ *   "<uint32>;<uint32>;...;<uint32>\r\n"   (HISTOGRAM_BINS values per line)
  *
- * Spectrometer 1 → Serial6  (UART6, Teensy 4.1 pins 44/45)
- * Spectrometer 2 → Serial3  (UART3, Teensy 4.1 pins 14/15)
+ * Spectrometer 1 → SPEC1_SERIAL  (UART6, Teensy 4.1 pins 44/45)
+ * Spectrometer 2 → SPEC2_SERIAL  (UART3, Teensy 4.1 pins 14/15)
  */
 
 #include "inst.h"
 
 /* ─────────────────────────────────────────────────────────────
+ * RX buffers – must be large enough to hold one full histogram
+ * line while the other port is being drained.
+ * HISTOGRAM_BINS × 7 bytes (6 digits + delimiter) rounded up.
+ * ───────────────────────────────────────────────────────────── */
+static uint8_t rxBuf1[HISTOGRAM_BINS * 7];
+static uint8_t rxBuf2[HISTOGRAM_BINS * 7];
+char inference[INFERENCE_BUF_LEN];
+
+/* ─────────────────────────────────────────────────────────────
  * Internal helpers
  * ───────────────────────────────────────────────────────────── */
 
-/**
- * Read one '\n'-terminated line from a HardwareSerial port into buf.
- * Returns SPEC_OK on success, SPEC_ERR_TIMEOUT if no newline within
- * UART_LINE_TIMEOUT_MS, or SPEC_ERR_UART on overflow.
- */
+/* readLine is kept for probe / reboot response parsing. */
 static SpecStatus readLine(HardwareSerial &port, char *buf, size_t bufLen)
 {
-    size_t   idx       = 0;
-    uint32_t deadline  = millis() + UART_LINE_TIMEOUT_MS;
+    size_t   idx      = 0;
+    uint32_t deadline = millis() + UART_LINE_TIMEOUT_MS;
 
     while (millis() < deadline)
     {
-        if (!port.available()) {
-            yield();   /* let Teensy background tasks run */
-            continue;
-        }
+        if (!port.available()) { yield(); continue; }
 
         int c = port.read();
         if (c < 0) continue;
 
-        if (c == '\n') {
-            buf[idx] = '\0';
-            return SPEC_OK;
-        }
-        if (c == '\r') continue;   /* strip CR */
+        if (c == '\n') { buf[idx] = '\0'; return SPEC_OK; }
+        if (c == '\r') continue;
 
-        if (idx >= bufLen - 1) {
-            buf[idx] = '\0';
-            return SPEC_ERR_UART;  /* line too long */
-        }
+        if (idx >= bufLen - 1) { buf[idx] = '\0'; return SPEC_ERR_UART; }
         buf[idx++] = (char)c;
     }
 
@@ -58,105 +48,81 @@ static SpecStatus readLine(HardwareSerial &port, char *buf, size_t bufLen)
     return SPEC_ERR_TIMEOUT;
 }
 
-/**
- * Attempt a single ID handshake on the given port.
- * Returns true if "OK" prefix is received.
- */
-static bool tryConnect(HardwareSerial &port)
-{
-    /* Discard any stale RX bytes */
-    while (port.available()) port.read();
-
-    port.print("ID?\r\n");
-
-    char resp[32];
-    SpecStatus st = readLine(port, resp, sizeof(resp));
-    if (st != SPEC_OK) return false;
-
-    return (strncmp(resp, "OK", 2) == 0);
-}
-
-/**
- * Read a full histogram block from the given serial port into dst.
- *
- * Sends "GET_HISTOGRAM\r\n", waits for "DATA:" header, reads
- * HISTOGRAM_BINS lines, then consumes the "END" trailer.
+/*
+ * Parses one complete semicolon-delimited histogram line from the
+ * continuous stream.  Attempts twice so a partial line (joined
+ * mid-stream on first call) is discarded in favour of the next
+ * clean frame.  Deadline slides on every received byte so a large
+ * bin count does not cause false timeouts.
  */
 static SpecStatus readHistogramFrom(HardwareSerial &port, Histogram &dst)
 {
-    char line[32];
-    SpecStatus st;
-
     memset(&dst, 0, sizeof(dst));
     dst.valid  = false;
     dst.faults = FAULT_NONE;
 
-    /* ── Request ── */
-    port.print("GET_HISTOGRAM\r\n");
-
-    /* ── Wait for DATA: header (allow a few lines of latency) ── */
-    bool headerFound = false;
-    for (int attempt = 0; attempt < 10; ++attempt)
+    for (int attempt = 0; attempt < 2; ++attempt)
     {
-        st = readLine(port, line, sizeof(line));
-        if (st == SPEC_ERR_TIMEOUT) {
-            dst.faults |= FAULT_UART;
-            return SPEC_ERR_TIMEOUT;
-        }
-        if (strncmp(line, "DATA:", 5) == 0) {
-            headerFound = true;
-            break;
-        }
-    }
+        uint32_t deadline    = millis() + UART_LINE_TIMEOUT_MS;
+        int      bin         = 0;
+        long     acc         = 0;
+        bool     hasDigit    = false;
+        bool     tokenActive = false;   /* any char seen for current token */
 
-    if (!headerFound) {
-        dst.faults |= FAULT_UART;
-        return SPEC_ERR_PARSE;
-    }
+        memset(dst.bins, 0, sizeof(dst.bins));
+        dst.total_counts = 0;
+        dst.faults       = FAULT_NONE;
 
-    /* ── Read HISTOGRAM_BINS values ── */
-    dst.total_counts = 0;
-
-    for (int i = 0; i < HISTOGRAM_BINS; ++i)
-    {
-        st = readLine(port, line, sizeof(line));
-        if (st != SPEC_OK) {
-            dst.faults |= FAULT_UART;
-            return st;
-        }
-
-        /* Catch literal NaN / Inf tokens emitted by some firmware */
-        if (strncasecmp(line, "nan", 3) == 0 ||
-            strncasecmp(line, "inf", 3) == 0)
+        while (true)
         {
-            dst.bins[i]  = 0;
-            dst.faults  |= FAULT_NAN_RAW;
-            continue;
+            if (millis() >= deadline) {
+                dst.faults |= FAULT_UART;
+                return SPEC_ERR_TIMEOUT;
+            }
+            if (!port.available()) { yield(); continue; }
+
+            int c = port.read();
+            if (c < 0) continue;
+            deadline = millis() + UART_LINE_TIMEOUT_MS;
+
+            if (c == '\r') continue;
+
+            if (c >= '0' && c <= '9') {
+                acc         = acc * 10 + (c - '0');
+                hasDigit    = true;
+                tokenActive = true;
+            } else if (c == ';' || c == '\n') {
+                if (tokenActive && bin < HISTOGRAM_BINS) {
+                    if (!hasDigit) {
+                        /* non-numeric token (nan/inf/etc.) */
+                        dst.bins[bin] = 0;
+                        dst.faults   |= FAULT_NAN_RAW;
+                    } else {
+                        if (acc > 0x00FFFFFFL) dst.faults |= FAULT_OVERFLOW;
+                        dst.bins[bin]       = (uint32_t)acc;
+                        dst.total_counts   += (uint32_t)acc;
+                    }
+                    bin++;
+                }
+                acc         = 0;
+                hasDigit    = false;
+                tokenActive = false;
+
+                if (c == '\n') break;
+            } else {
+                tokenActive = true;   /* letter in nan/inf/etc. */
+            }
         }
 
-        /* Parse unsigned integer */
-        char    *endptr = nullptr;
-        long     val    = strtol(line, &endptr, 10);
-
-        if (endptr == line) {
-            /* Completely unparseable */
-            dst.bins[i]  = 0;
-            dst.faults  |= FAULT_NAN_RAW;
-            continue;
+        if (bin == HISTOGRAM_BINS) {
+            dst.valid = true;
+            return SPEC_OK;
         }
-
-        if (val < 0) val = 0;
-        if (val > 0x00FFFFFFL) dst.faults |= FAULT_OVERFLOW;
-
-        dst.bins[i]       = (uint32_t)val;
-        dst.total_counts += (uint32_t)val;
+        /* partial line — discard and read the next complete one */
     }
 
-    /* ── Consume END marker (non-fatal if missing / timed-out) ── */
-    readLine(port, line, sizeof(line));
-
-    dst.valid = true;
-    return SPEC_OK;
+    dst.faults |= FAULT_UART;
+    return SPEC_ERR_PARSE;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -180,6 +146,11 @@ void SPEC_InitUntilConnected(void)
     SPEC1_SERIAL.begin(SPEC_BAUD);
     SPEC2_SERIAL.begin(SPEC_BAUD);
 
+    /* Enlarge RX buffers so one port can accumulate a full histogram
+     * line while the other is being drained by readHistogramFrom. */
+    SPEC1_SERIAL.addMemoryForRead(rxBuf1, sizeof(rxBuf1));
+    SPEC2_SERIAL.addMemoryForRead(rxBuf2, sizeof(rxBuf2));
+
     Serial.println("[SPEC] Waiting for spectrometers...");
 
     bool s1 = false, s2 = false;
@@ -187,12 +158,14 @@ void SPEC_InitUntilConnected(void)
     while (!s1 || !s2)
     {
         if (!s1) {
-            s1 = tryConnect(SPEC1_SERIAL);
-            if (s1) Serial.println("[SPEC] Spectrometer 1 connected (Serial6).");
+            while (!SPEC1_SERIAL) { delay(10); }
+            s1 = true;
+            Serial.println("[SPEC] Spectrometer 1 connected (SPEC1_SERIAL).");
         }
         if (!s2) {
-            s2 = tryConnect(SPEC2_SERIAL);
-            if (s2) Serial.println("[SPEC] Spectrometer 2 connected (Serial3).");
+            while (!SPEC2_SERIAL) { delay(10); }
+            s2 = true;
+            Serial.println("[SPEC] Spectrometer 2 connected (SPEC2_SERIAL).");
         }
 
         if (!s1 || !s2) delay(CONNECT_RETRY_DELAY_MS);
@@ -203,15 +176,8 @@ void SPEC_InitUntilConnected(void)
 
 void SPEC_SyncReboot(void)
 {
-    /*
-     * Write both reboot commands back-to-back. At 115200 baud each
-     * 9-byte frame takes ~0.78 ms, giving <1 ms inter-device skew —
-     * negligible relative to typical spectrometer boot time (≥100 ms).
-     *
-     * For tighter synchronisation, drive a shared GPIO reset line instead.
-     */
-    SPEC1_SERIAL.print("REBOOT\r\n");
-    SPEC2_SERIAL.print("REBOOT\r\n");
+    SPEC1_SERIAL.print("reboot\r\n");
+    SPEC2_SERIAL.print("reboot\r\n");
 
     Serial.println("[SPEC] Reboot commands sent. Waiting for boot...");
     delay(500);
@@ -236,7 +202,6 @@ SpecStatus SPEC_LogHistogramSD(const Histogram &hist, const char *filename)
     }
 
     f.println("bin_index,counts");
-
     for (int i = 0; i < HISTOGRAM_BINS; ++i) {
         f.print(i);
         f.print(',');
@@ -256,13 +221,14 @@ void SPEC_CombineHistograms(const Histogram   &hist1,
     for (int i = 0; i < HISTOGRAM_BINS; ++i)
     {
         float combined = (float)hist1.bins[i] + (float)hist2.bins[i];
-
-        /* Guard against any float arithmetic weirdness */
         if (!isfinite(combined)) combined = 0.0f;
 
         dst.bins[i]       = combined;
         dst.total_counts += (uint32_t)combined;
     }
+
+    dst.bins[0]       = 0.0f;
+    dst.total_counts -= (uint32_t)(hist1.bins[0] + hist2.bins[0]);
 }
 
 void SPEC_ScrubNaN(CombinedHistogram &hist)
@@ -272,7 +238,7 @@ void SPEC_ScrubNaN(CombinedHistogram &hist)
     for (int i = 0; i < HISTOGRAM_BINS; ++i)
     {
         if (isnan(hist.bins[i]) || isinf(hist.bins[i]))
-            hist.bins[i] = 0.0f;
+            hist.bins[i] = 0;
 
         hist.total_counts += (uint32_t)hist.bins[i];
     }
@@ -287,7 +253,6 @@ SpecStatus SPEC_LogCombinedSD(const CombinedHistogram &hist)
     }
 
     f.println("bin_index,counts");
-
     for (int i = 0; i < HISTOGRAM_BINS; ++i) {
         f.print(i);
         f.print(',');
@@ -300,24 +265,23 @@ SpecStatus SPEC_LogCombinedSD(const CombinedHistogram &hist)
 
 void SPEC_TransmitCombined(const CombinedHistogram &hist)
 {
-    OUTPUT_SERIAL.print("DATA:\r\n");
-
     for (int i = 0; i < HISTOGRAM_BINS; ++i) {
-        OUTPUT_SERIAL.println((uint32_t)hist.bins[i]);
+        //if (i > 0) OUTPUT_SERIAL.print(';');
+        OUTPUT_SERIAL.print(hist.bins[i]);
+        OUTPUT_SERIAL.print(";");
     }
+    OUTPUT_SERIAL.print("\r\n");
 
-    OUTPUT_SERIAL.print("END\r\n");
+    Serial.printf("[SPEC] Transmitted %d bins\n", HISTOGRAM_BINS);
 }
 
 FaultFlags SPEC_CheckQuality(Histogram &hist)
 {
-    FaultFlags flags = hist.faults;  /* carry any parse-time flags */
+    FaultFlags flags = hist.faults;
 
-    /* ── 1. Low total counts ── */
     if (hist.total_counts < MIN_TOTAL_COUNTS)
         flags |= FAULT_LOW_COUNTS;
 
-    /* ── 2. Sparse bins ── */
     uint32_t zeroBins = 0;
     for (int i = 0; i < HISTOGRAM_BINS; ++i)
         if (hist.bins[i] == 0) ++zeroBins;
@@ -332,7 +296,7 @@ FaultFlags SPEC_CheckQuality(Histogram &hist)
         Serial.printf("[SPEC] Fault flags: 0x%02X  strikes: %d\n",
                       flags, hist.strike_count);
     } else {
-        hist.strike_count = 0;  /* clear on clean read */
+        hist.strike_count = 0;
     }
 
     return flags;
@@ -345,66 +309,65 @@ void SPEC_HandleFaults(Histogram &hist1, Histogram &hist2)
 
     if (!fault1 && !fault2) return;
 
-    Serial.println("[SPEC] FAULT LIMIT REACHED – rebooting both spectrometers.");
+    Serial.println("[SPEC] FAULT LIMIT REACHED - rebooting both spectrometers.");
 
-    /* Reboot both to keep them in sync regardless of which one faulted */
     SPEC_SyncReboot();
-
-    /* Re-init blocks until both respond */
     SPEC_InitUntilConnected();
 
-    /* Clear fault state */
     hist1.strike_count = 0;  hist1.faults = FAULT_NONE;
     hist2.strike_count = 0;  hist2.faults = FAULT_NONE;
 
     Serial.println("[SPEC] Recovery complete.");
 }
 
-Histogram        hist1, hist2;
- CombinedHistogram combined;
+static char orinBuf[INFERENCE_BUF_LEN];
+static size_t orinIdx = 0;
+
+void ORIN_Poll(void)
+{
+    while (OUTPUT_SERIAL.available())
+    {
+        int c = OUTPUT_SERIAL.read();
+        if (c < 0 || c == '\r') continue;
+
+        if (c == '\n') {
+            if (orinIdx > 0) {
+                orinBuf[orinIdx] = '\0';
+                memcpy(inference, orinBuf, orinIdx + 1);
+                Serial.printf("[ORIN] %s\n", inference);
+            }
+            orinIdx = 0;
+        } else if (orinIdx < INFERENCE_BUF_LEN - 1) {
+            orinBuf[orinIdx++] = (char)c;
+        }
+    }
+}
+
+Histogram         hist1, hist2;
+CombinedHistogram combined;
 
 void SPEC_AcquisitionLoop(void)
 {
-
-    /* ── Step 1: Connect (blocks until both respond) ── */
     SPEC_InitUntilConnected();
-
-    /* ── Step 2: Sync reboot ── */
     SPEC_SyncReboot();
 
-    /* ── Acquisition super-loop ── */
     while (true)
     {
-        /* ── Step 3: Read histograms ── */
         SPEC_ReadHistogram1(hist1);
         SPEC_ReadHistogram2(hist2);
 
-        /* ── Step 3a: Log raw histograms to SD ── */
         if (hist1.valid) SPEC_LogHistogramSD(hist1, SD_LOG_FILE_1);
         if (hist2.valid) SPEC_LogHistogramSD(hist2, SD_LOG_FILE_2);
 
-        /* ── Step 4: Combine ── */
         SPEC_CombineHistograms(hist1, hist2, combined);
-
-        /* ── Step 5: Scrub NaN / Inf ── */
         SPEC_ScrubNaN(combined);
-
-        /* ── Log combined to SD ── */
         SPEC_LogCombinedSD(combined);
-
-        /* ── Transmit combined histogram ── */
         SPEC_TransmitCombined(combined);
 
-        /* ── Step 6: Fault detection ── */
         SPEC_CheckQuality(hist1);
         SPEC_CheckQuality(hist2);
         SPEC_HandleFaults(hist1, hist2);
 
-        /*
-         * Optional inter-acquisition delay.
-         * Remove or adjust to match your spectrometer's output cadence.
-         * yield() keeps the Teensy USB/serial stack responsive.
-         */
         yield();
     }
 }
