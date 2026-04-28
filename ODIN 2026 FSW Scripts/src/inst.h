@@ -25,7 +25,7 @@
 #define OUTPUT_SERIAL           Serial8     /* Combined histogram TX target  */
 
 #define SPEC_BAUD               115200
-#define OUTPUT_BAUD             115200
+#define OUTPUT_BAUD             19200
 
 /** Number of energy bins per spectrometer */
 #define HISTOGRAM_BINS          4096

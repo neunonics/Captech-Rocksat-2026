@@ -2,6 +2,7 @@
 #include <Wire.h> // WIRE LIBRARY
 #include <rockblock_9704.h> // IRIDIUM 9704 LIBRARY
 #include <comm.h> // COMMS DEFINITIONS
+#include <fsw.h> // FSW DEFINITIONS
 #include <pins.h> // PINS DEFINITIONS
 
 // -- INIT FUNCTIONS -- //
@@ -26,6 +27,11 @@ bool initCOMM(COMM &comm){
         delay(100); // Short delay to avoid sampling too quickly
     }
 
+    if(!rbBegin(COMM_SERIAL)) { // Initialize RockBLOCK communication
+        Serial.println("[COMM] ERROR: Failed to initialize COMMS Serial communication.");
+        return false; // Return false if COMMS initialization fails
+    }
+
     comm.ENBL_STATUS = true; // Update COMMS status to enabled
     return true; // Enable pin pulled high, COMMS should be enabled
 }
@@ -48,4 +54,44 @@ bool commShutDown(COMM &comm){
 
     comm.ENBL_STATUS = false; // Update COMMS status to disabled
     return true; // Return true to indicate successful shutdown
+}
+
+bool sendMessage(FSW &fsw, COMM &comm){
+    Serial.println("[COMM] Entered sendMessage function!");
+    if ((fsw.currentMissionTime - fsw.lastTransmit) >= COMM_SEND_INTERVAL){
+        fsw.lastTransmit = now();
+        Serial.println("[COMM] Attempted to send time" + String(fsw.lastTransmit) + "!");
+
+        if (!comm.ENBL_STATUS) {
+            Serial.println("[COMM] ERROR: Cannot send message, COMMS not enabled.");
+            return false; // Cannot send message if COMMS are not enabled
+        }
+
+        //if (digitalRead(XMIT_STAT) == HIGH) {
+        //    Serial.println("[COMM] ERROR: Already transmitting a message, cannot send another.");
+        //    return false; // Cannot send message if COMMS are not ready (already transmitting)
+        //}
+
+        Serial.println("[COMM] About to concatnate strings!");
+        String messageTemp = "a" + String(fsw.currentMissionTime) + "b" + fsw.epdsToSave + "c" + fsw.fswToSave + "d" + fsw.AIToSave;
+        Serial.println("[COMM] About to concatnate strings!");
+        int messageLength = messageTemp.length();
+        Serial.println("[COMM] About to concatnate strings!");
+        char message[messageLength];
+        Serial.println("[COMM] About to concatnate strings!");
+        messageTemp.toCharArray(message, messageLength);
+        Serial.println("[COMM] DONE CONCATNATING!");
+        //int8_t signalStrength;
+        //signalStrength = rbGetSignal();
+        //Serial.println("[COMM] Attempting to send message with + " + String(signalStrength) + " signal!");
+
+        if(!rbSendMessageAny(244, message, messageLength, COMM_TIMEOUT)) { // Send current mission time as message payload (max 244 bytes for Iridium Short Burst Data)
+            Serial.println("[COMM] ERROR: Failed to send message via COMMS.");
+            return false; // Return false if message transmission fails
+        }
+
+        comm.messagesSent++; // Increment messages sent counter
+        Serial.println("[COMM] Message sent: " + messageTemp);
+        return true; // Return true to indicate successful transmission
+    } 
 }
