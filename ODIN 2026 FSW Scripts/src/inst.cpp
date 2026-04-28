@@ -61,6 +61,13 @@ static SpecStatus readHistogramFrom(HardwareSerial &port, Histogram &dst)
     dst.valid  = false;
     dst.faults = FAULT_NONE;
 
+    uint32_t syncDeadline = millis() + UART_LINE_TIMEOUT_MS;
+    while (millis() < syncDeadline) {
+        if (!port.available()) { yield(); continue; }
+        if (port.read() == '\n') break;
+        syncDeadline = millis() + UART_LINE_TIMEOUT_MS; // slide on each byte
+    }
+
     for (int attempt = 0; attempt < 2; ++attempt)
     {
         uint32_t deadline    = millis() + UART_LINE_TIMEOUT_MS;
@@ -216,19 +223,18 @@ void SPEC_CombineHistograms(const Histogram   &hist1,
                             const Histogram   &hist2,
                             CombinedHistogram &dst)
 {
+    uint32_t combined;
     dst.total_counts = 0;
 
     for (int i = 0; i < HISTOGRAM_BINS; ++i)
     {
-        float combined = (float)hist1.bins[i] + (float)hist2.bins[i];
-        if (!isfinite(combined)) combined = 0.0f;
+        combined = hist1.bins[i] + hist2.bins[i];
 
         dst.bins[i]       = combined;
-        dst.total_counts += (uint32_t)combined;
+        dst.total_counts += combined;
     }
 
-    dst.bins[0]       = 0.0f;
-    dst.total_counts -= (uint32_t)(hist1.bins[0] + hist2.bins[0]);
+    dst.bins[0]       = 0; /* discard bin 0 (dark counts / noise floor) from combined histogram */
 }
 
 void SPEC_ScrubNaN(CombinedHistogram &hist)
@@ -266,8 +272,8 @@ SpecStatus SPEC_LogCombinedSD(const CombinedHistogram &hist)
 void SPEC_TransmitCombined(const CombinedHistogram &hist)
 {
     for (int i = 0; i < HISTOGRAM_BINS; ++i) {
-        //Serial.print(hist.bins[i]);
-        //Serial.print(';');
+        Serial.print(hist.bins[i]);
+        Serial.print(';');
         OUTPUT_SERIAL.print(hist.bins[i]);
         OUTPUT_SERIAL.print(";");
     }
@@ -343,7 +349,7 @@ String ORIN_Poll(void)
             orinBuf[orinIdx++] = (char)c;
         }
     }
-    return String(inference);
+    return String(inference) + ";";
 }
 
 Histogram         hist1, hist2;

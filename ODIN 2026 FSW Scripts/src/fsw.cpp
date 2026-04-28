@@ -15,7 +15,7 @@ void initFSWStatus(FSW &fsw) {
   fsw.RTC_RDY = false; // RTC has been initialized and is ready to provide time data
   fsw.SD_RDY = false; // SD Card has been initialized and is ready to log data
   fsw.HRTBT = false; // Heartbeat LED state (true = on, false = off)
-  fsw.TE2_TRIGGERED = false; // TE2 has been triggered 
+  fsw.TE2_TRIGGERS = 0; // TE2 has been triggered 
 }
 
 bool initSDCard(FSW &fsw) {
@@ -87,6 +87,7 @@ void initTimers(FSW &fsw) {
   fsw.currentMissionTime = now(); // Current Time of Mission (s)
   fsw.lastHeartbeatTime = now(); // Last Time Attitude Data was Logged (s)
   fsw.lastSDCardSave = now(); // Last Time SD Card Data was Saved (s)
+  fsw.lastTransmit = now();
 }
 
 // -- LOGGING FUNCTIONS -- //
@@ -103,29 +104,23 @@ void readAttitude(FSW &fsw) {
     // Read all attitude data from BNO055 A and BNO055 B and store in FSW struct
     fsw.euler_A = fsw.BNO055_A.getVector(Adafruit_BNO055::VECTOR_EULER); // Euler angles from BNO055 A
     fsw.linAcc_A = fsw.BNO055_A.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL); // Linear acceleration from BNO055 A
+    fsw.mag_A = fsw.BNO055_A.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER); // Magnetometer data from BNO055 A
     fsw.quat_A = fsw.BNO055_A.getQuat(); // Quaternion from BNO055 A
-    fsw.temp_A = fsw.BNO055_A.getTemp(); // Temperature from BNO055 A
 
     fsw.euler_B = fsw.BNO055_B.getVector(Adafruit_BNO055::VECTOR_EULER); // Euler angles from BNO055 B
     fsw.linAcc_B = fsw.BNO055_B.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL); // Linear acceleration from BNO055 B
+    fsw.mag_B = fsw.BNO055_B.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER); // Magnetometer data from BNO055 B
     fsw.quat_B = fsw.BNO055_B.getQuat(); // Quaternion from BNO055 B
-    fsw.temp_B = fsw.BNO055_B.getTemp(); // Temperature from BNO055 B
 
     // Print attitude data to Serial Monitor for debugging
-    Serial.print("[FSW] -- BNO055 A Data --");
-    Serial.print("Euler: ");
+    Serial.println("[FSW] -- BNO055 A Data --");
+    Serial.print("[FSW] Euler: ");
     Serial.print(fsw.euler_A.x(), 3);
     Serial.print(", ");
     Serial.print(fsw.euler_A.y(), 3);
     Serial.print(", ");
     Serial.println(fsw.euler_A.z(), 3);
-    Serial.print("Lin Acc: ");
-    Serial.print(fsw.linAcc_A.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.linAcc_A.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.linAcc_A.z(), 3);
-    Serial.print("Quaternion: ");
+    Serial.print("[FSW] Quaternion: ");
     Serial.print(fsw.quat_A.x(), 3);
     Serial.print(", ");
     Serial.print(fsw.quat_A.y(), 3);
@@ -133,23 +128,27 @@ void readAttitude(FSW &fsw) {
     Serial.print(fsw.quat_A.z(), 3);
     Serial.print(", ");
     Serial.println(fsw.quat_A.w(), 3);
-    Serial.print("Temperature: ");
-    Serial.println(fsw.temp_A, 3);
+    Serial.print("[FSW] Magnetometer: ");
+    Serial.print(fsw.mag_A.x(), 3);
+    Serial.print(", ");
+    Serial.print(fsw.mag_A.y(), 3);
+    Serial.print(", ");
+    Serial.println(fsw.mag_A.z(), 3);
+    Serial.print("[FSW] Linear Acceleration: ");
+    Serial.print(fsw.linAcc_A.x(), 3);
+    Serial.print(", ");
+    Serial.print(fsw.linAcc_A.y(), 3);
+    Serial.print(", ");
+    Serial.println(fsw.linAcc_A.z(), 3);
 
-    Serial.print("[FSW] -- BNO055 B Data --");
-    Serial.print("Euler: ");
+    Serial.println("[FSW] -- BNO055 B Data --");
+    Serial.print("[FSW] Euler: ");
     Serial.print(fsw.euler_B.x(), 3);
     Serial.print(", ");
     Serial.print(fsw.euler_B.y(), 3);
     Serial.print(", ");
     Serial.println(fsw.euler_B.z(), 3);
-    Serial.print("Lin Acc: ");
-    Serial.print(fsw.linAcc_B.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.linAcc_B.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.linAcc_B.z(), 3);
-    Serial.print("Quaternion: ");
+    Serial.print("[FSW] Quaternion: ");
     Serial.print(fsw.quat_B.x(), 3);
     Serial.print(", ");
     Serial.print(fsw.quat_B.y(), 3);
@@ -157,16 +156,28 @@ void readAttitude(FSW &fsw) {
     Serial.print(fsw.quat_B.z(), 3);
     Serial.print(", ");
     Serial.println(fsw.quat_B.w(), 3);
-    Serial.print("Temperature: ");
-    Serial.println(fsw.temp_B, 3);
+    Serial.print("[FSW] Magnetometer: ");
+    Serial.print(fsw.mag_B.x(), 3);
+    Serial.print(", ");
+    Serial.print(fsw.mag_B.y(), 3);
+    Serial.print(", ");
+    Serial.println(fsw.mag_B.z(), 3);
+    Serial.print("[FSW] Linear Acceleration: ");
+    Serial.print(fsw.linAcc_B.x(), 3);
+    Serial.print(", ");
+    Serial.print(fsw.linAcc_B.y(), 3);
+    Serial.print(", ");
+    Serial.println(fsw.linAcc_B.z(), 3);
+
     fsw.fswToSave += String(fsw.euler_A.x(), 3) + ";" + String(fsw.euler_A.y(), 3) + ";" + String(fsw.euler_A.z(), 3) + ";" + // Log BNO055 A Euler angles
-                      String(fsw.linAcc_A.x(), 3) + ";" + String(fsw.linAcc_A.y(), 3) + ";" + String(fsw.linAcc_A.z(), 3) + ";" + // Log BNO055 A Linear Acceleration
                       String(fsw.quat_A.x(), 3) + ";" + String(fsw.quat_A.y(), 3) + ";" + String(fsw.quat_A.z(), 3) + ";" + String(fsw.quat_A.w(), 3) + ";" + // Log BNO055 A Quaternion
-                      String(fsw.temp_A, 3) + ";"; // Log BNO055 A Temperature
+                      String(fsw.mag_A.x(), 3) + ";" + String(fsw.mag_A.y(), 3) + ";" + String(fsw.mag_A.z(), 3) + ";" + // Log BNO055 A Magnetometer
+                      String(fsw.linAcc_A.x(), 3) + ";" + String(fsw.linAcc_A.y(), 3) + ";" + String(fsw.linAcc_A.z(), 3) + ";" + // Log BNO055 A Linear Acceleration
+
     fsw.fswToSave += String(fsw.euler_B.x(), 3) + ";" + String(fsw.euler_B.y(), 3) + ";" + String(fsw.euler_B.z(), 3) + ";" + // Log BNO055 B Euler angles
-                      String(fsw.linAcc_B.x(), 3) + ";" + String(fsw.linAcc_B.y(), 3) + ";" + String(fsw.linAcc_B.z(), 3) + ";" + // Log BNO055 B Linear Acceleration
                       String(fsw.quat_B.x(), 3) + ";" + String(fsw.quat_B.y(), 3) + ";" + String(fsw.quat_B.z(), 3) + ";" + String(fsw.quat_B.w(), 3) + ";" + // Log BNO055 B Quaternion
-                      String(fsw.temp_B, 3) + ";"; // Log BNO055 B Temperature
+                      String(fsw.mag_B.x(), 3) + ";" + String(fsw.mag_B.y(), 3) + ";" + String(fsw.mag_B.z(), 3) + ";" + // Log BNO055 B Magnetometer
+                      String(fsw.linAcc_B.x(), 3) + ";" + String(fsw.linAcc_B.y(), 3) + ";" + String(fsw.linAcc_B.z(), 3) + ";"; // Log BNO055 B Linear Acceleration
   }
 }
 
