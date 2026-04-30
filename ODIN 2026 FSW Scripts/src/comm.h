@@ -3,6 +3,7 @@
 
 #include "pins.h"
 #include "fsw.h"
+#include "rockblock_9704.h"
 
 #define COMM_SERIAL Serial2 // Serial port used for communication with RockBLOCK
 #define COMM_BAUD_RATE 230400 // Baud rate for communication with RockBLOCK
@@ -14,6 +15,7 @@ struct COMM {
 };
 
 // -- INIT FUNCTIONS -- //
+void clearQueue();
 void initCOMMStatus(COMM &comm);
 bool initCOMM(COMM &comm);
 bool commShutDown(COMM &comm);

@@ -25,7 +25,7 @@
 #define LOOP_WAIT 10 // Wait 10 milliseconds between loop iterations
 #define TE2_WAIT 5000    // Wait at least 5 seconds before arming TE-2, just to make sure the payload isn't triggered early when starting
 #define TEST_WAIT 1000    // Wait 1 second for testing
-//#define TE2_TRIGGER_WAIT 1000  // Wait 1 second after TE-2 is triggered before starting TE-2 program, to ensure all systems are ready and stable before beginning TE-2 operations
+
 
 // Globals
 EPDS epds; // EPDS struct instance
@@ -39,7 +39,10 @@ void te2(); // Interrupt function that runs when TE-2 is triggered
 
 void setup() {
   // -- Standard Wiring Initialization -- //
-  Serial.begin(9600); //Starts the serial monitor for debugging
+  DEBUG_SERIAL.begin(DEBUG_SERIAL_BAUD); // Starts the serial monitor for debugging
+  COMM_SERIAL.begin(COMM_BAUD_RATE); // Serial for transmitting through COMM
+  SPEC1_SERIAL.begin(SPEC_BAUD); // Serial for Spectrometer 1
+  SPEC2_SERIAL.begin(SPEC_BAUD); // Serial for Spectrometer 2
   OUTPUT_SERIAL.begin(OUTPUT_BAUD); // Serial for transmitting combined histogram data
 
   initPins(); // Setup Pins
@@ -47,11 +50,11 @@ void setup() {
 
   delay(SETUP_WAIT); // Short delay to ensure serial is ready
 
-  Serial.println("Serial Started...");
+  DEBUG_SERIAL.println("Serial Started...");
   Wire.begin(); //tells the computer to start the I2C
   
   //FSW Startup Message
-  Serial.println("ODIN FSW Starting Up...");
+  DEBUG_SERIAL.println("ODIN FSW Starting Up...");
 
   // Initialize Struct Values
   initFSWStatus(fsw); // Initialize FSW status variables (Launch, Science, Attitude Ready, RTC Ready)
@@ -59,63 +62,63 @@ void setup() {
 
   // -- Initialize RTC -- //
   while (!fsw.RTC_RDY) {
-     Serial.println("[FSW] RTC not ready, attempting initialization...");
+     DEBUG_SERIAL.println("[FSW] RTC not ready, attempting initialization...");
      if (!initRTC(fsw)) {
-       Serial.println("[FSW] RTC initialization attempt failed!");
+       DEBUG_SERIAL.println("[FSW] RTC initialization attempt failed!");
      } else {
-       Serial.println("[FSW] RTC initialization successful!");
+       DEBUG_SERIAL.println("[FSW] RTC initialization successful!");
      }
      delay(LOOP_WAIT); // Short delay before retrying RTC initialization
   }
   initTimers(fsw); // Initialize mission timers
-  Serial.print("[FSW] Mission Start Time: ");
-  Serial.println(fsw.missionStartTime);
+  DEBUG_SERIAL.print("[FSW] Mission Start Time: ");
+  DEBUG_SERIAL.println(fsw.missionStartTime);
 
   // -- Initialize SD Card -- //
 
-  Serial.println("[FSW] Initializing SD card...");
+  DEBUG_SERIAL.println("[FSW] Initializing SD card...");
   for (int attempt = 0; attempt < 3 && !fsw.SD_RDY; attempt++) {
     initSDCard(fsw);
     delay(LOOP_WAIT);
   }
   if (!fsw.SD_RDY) {
-    Serial.println("[FSW] SD card initialization failed after 3 attempts!");
+    DEBUG_SERIAL.println("[FSW] SD card initialization failed after 3 attempts!");
   } else {
-    Serial.println("[FSW] SD card initialization done.");
+    DEBUG_SERIAL.println("[FSW] SD card initialization done.");
   }
 
   // -- Initialize BNO055 A & B-- //
-  Serial.println("[FSW] Initializing BNO055 A & B...");
+  DEBUG_SERIAL.println("[FSW] Initializing BNO055 A & B...");
   for (int attempt = 0; attempt < 3 && !fsw.ATTITUDE_RDY; attempt++) {
     initBNO055(fsw);
     delay(LOOP_WAIT);
   }
   if (!fsw.ATTITUDE_RDY) {
-    Serial.println("[FSW] BNO055 initialization failed after 3 attempts!");
+    DEBUG_SERIAL.println("[FSW] BNO055 initialization failed after 3 attempts!");
   } else {
-    Serial.println("[FSW] BNO055 initialization done.");
+    DEBUG_SERIAL.println("[FSW] BNO055 initialization done.");
   }
 
   // --Initialize Spectrometers A & B -- //
-  Serial.println("[SPEC] Initializing Spectrometers A & B...");
+  DEBUG_SERIAL.println("[SPEC] Initializing Spectrometers A & B...");
   
   SPEC_InitUntilConnected();
   SPEC_SyncReboot();
 
   // -- Initialize EPDS -- //
-  Serial.println("[EPDS] Initializing EPDS...");
+  DEBUG_SERIAL.println("[EPDS] Initializing EPDS...");
   for (int attempt = 0; attempt < 3 && !epds.initialized; attempt++) {
         EPDS_init(epds);
         delay(LOOP_WAIT);
   }
   if (!epds.initialized) {
-        Serial.println("[EPDS] EPDS initialization failed after 3 attempts!");
+        DEBUG_SERIAL.println("[EPDS] EPDS initialization failed after 3 attempts!");
   } else {
-        Serial.println("[EPDS] EPDS initialization done.");
+        DEBUG_SERIAL.println("[EPDS] EPDS initialization done.");
   }
   
   // -- Initialize COMMS -- //
-  Serial.println("[COMM] Initializing COMMS...");
+  DEBUG_SERIAL.println("[COMM] Initializing COMMS...");
 
   // Try to initialize COMMS up to 3 times, in case of failure
   for (int attempt = 0; attempt < 3 && !comm.ENBL_STATUS; attempt++) {
@@ -123,9 +126,9 @@ void setup() {
     delay(LOOP_WAIT);
   }
   if (!comm.ENBL_STATUS) {
-    Serial.println("[COMM] COMMS initialization failed after 3 attempts!");
+    DEBUG_SERIAL.println("[COMM] COMMS initialization failed after 3 attempts!");
   } else {
-    Serial.println("[COMM] COMMS initialization done.");
+    DEBUG_SERIAL.println("[COMM] COMMS initialization done.");
   }
 }
 
@@ -138,7 +141,7 @@ void loop() {
       fsw.lastTE2CheckTime = now(); // Update last TE-2 check time
       if (digitalRead(TE2_SIGNAL) == HIGH) {
         fsw.TE2_TRIGGERS++; // Increment TE-2 trigger count
-        Serial.println("[FSW] TE-2 Signal Read! Incrementing TE-2 trigger count. Current TE-2 trigger count: " + String(fsw.TE2_TRIGGERS));
+        DEBUG_SERIAL.println("[FSW] TE-2 Signal Read! Incrementing TE-2 trigger count. Current TE-2 trigger count: " + String(fsw.TE2_TRIGGERS));
       }
     }
 
@@ -156,8 +159,9 @@ void loop() {
 
   // -- Log Time -- //
   fsw.currentMissionTime = now(); // Get the current time
-  Serial.print("[FSW] Current Mission Time: ");
-  Serial.println(fsw.currentMissionTime);
+  DEBUG_SERIAL.print("[FSW] Current Mission Time: ");
+  DEBUG_SERIAL.println(fsw.currentMissionTime);
+  fsw.fswToSave += String(fsw.currentMissionTime) + ";";
 
   if ((fsw.currentMissionTime - fsw.lastHeartbeatTime) >= HEARTBEAT_INTERVAL) {
     fsw.lastHeartbeatTime = now(); // Update last heartbeat time
@@ -180,16 +184,16 @@ void loop() {
     fsw.AIToSave = ORIN_Poll();
 
     // -- Read Spectrometer Histograms -- //
-    Serial.println("[SPEC] Reading spectrometer histograms...");
+    DEBUG_SERIAL.println("[SPEC] Reading spectrometer histograms...");
     SPEC_ReadHistogram1(hist1);
     SPEC_ReadHistogram2(hist2);
-    Serial.println("[SPEC] Combining histograms...");
+    DEBUG_SERIAL.println("[SPEC] Combining histograms...");
     SPEC_CombineHistograms(hist1, hist2, combined);
-    Serial.println("[SPEC] Scrubbing NaNs from combined histogram...");
+    DEBUG_SERIAL.println("[SPEC] Scrubbing NaNs from combined histogram...");
     SPEC_ScrubNaN(combined);
-    Serial.println("[SPEC] Transmitting combined histogram...");
+    DEBUG_SERIAL.println("[SPEC] Transmitting combined histogram...");
     SPEC_TransmitCombined(combined);
-    Serial.println("[SPEC] Checking histogram quality and handling faults...");
+    DEBUG_SERIAL.println("[SPEC] Checking histogram quality and handling faults...");
     SPEC_CheckQuality(hist1);
     SPEC_CheckQuality(hist2);
     SPEC_HandleFaults(hist1, hist2);
@@ -199,9 +203,8 @@ void loop() {
         fsw.histogramBToSave += String(hist2.bins[bin]) + ";";
         fsw.combinedHistogram += String(combined.bins[bin]) + ";";
     }
+    fsw.AIToSave += fsw.combinedHistogram;
 
-
-    Serial.println("[COMM] Attempting to send message!");
     if(comm.messagesSent == 0) {
       sendMessage(fsw, comm);
     }
@@ -213,7 +216,7 @@ void loop() {
 
 void te2(){
   // TE-2 has been triggered (Enter Science Mode)
-  Serial.println("[FSW] TE-2 Signal Read! Payload now transitioning to Science Mode...");
+  DEBUG_SERIAL.println("[FSW] TE-2 Signal Read! Payload now transitioning to Science Mode...");
   digitalWrite(LED_PWR, LOW); // Turn off power LED to indicate TE-2 has been triggered and payload is now in Science Mode
 
   fsw.LAUNCH = false; // TE-2 has been triggered (Science Mode)
@@ -221,7 +224,7 @@ void te2(){
 
   digitalWrite(LED_COMM, HIGH); // Turn on COMMS LED to indicate TE-2 has been triggered and COMMS is now primed to XMIT
   SPEC_SyncReboot(); // Reboot spectrometers to ensure they are in sync and ready for science operations
-  Serial.println("[FSW] TE-2 Setup Finished! Payload now in Science Mode...");
+  DEBUG_SERIAL.println("[FSW] TE-2 Setup Finished! Payload now in Science Mode...");
   delay(TE2_WAIT); // Wait at least 10 seconds before starting TE-2 operations
   digitalWrite(LED_PWR, HIGH); // Turn off COMMS LED to indicate TE-2 operations are now starting
 }

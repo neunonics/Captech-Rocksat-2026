@@ -24,10 +24,14 @@
 #define HEARTBEAT_INTERVAL 1 // Flip heartbeat LED every 1 second
 #define SD_SAVE_INTERVAL 1 // Save to SD card every 1 second (TIMERS OPERATE IN SECONDS, SO THIS IS 1 SECOND INTERVAL)
 #define TE2_CHECK_INTERVAL 1 // Check TE-2 signal every 1 second
-#define COMM_SEND_INTERVAL 10 // Send message via COMMS every 10 seconds
+
+#define COMM_SEND_INTERVAL 30 // Send message via COMMS every 30 seconds
 #define COMM_TIMEOUT 10 // Timeout for COMMS transmission in seconds
 
 #define TE_2_TRIGGER_THRESHOLD 2 // Number of times TE-2 signal must be read high before transitioning to Science Mode
+
+#define DEBUG_SERIAL Serial // USB Debug Serial
+#define DEBUG_SERIAL_BAUD 9600// USB Debus Serial Baud Rate
 
 struct FSW {
     // -- FSW STATUS -- //
@@ -66,9 +70,10 @@ struct FSW {
     unsigned long missionStartTime; // Start Time of Mission (s)
     unsigned long currentMissionTime; // Current Time of Mission (s)
     unsigned long lastHeartbeatTime; // Last Time Attitude Data was Logged (s)
+    unsigned long lastPredictionSave; // Last Time Prediction was Logged (s)
     unsigned long lastSDCardSave; // Last Time SD Card Data was Saved (s)
     unsigned long lastTE2CheckTime; // Last Time TE2 pin was checked (s)
-    unsigned long lastTransmit; // Last Time Attempted to Transmit
+    unsigned long lastTransmit; // Last Time Attempted to Transmit (s)
 };
 
 
@@ -78,6 +83,7 @@ void initFSWStatus(FSW &fsw);
 bool initSDCard(FSW &fsw);
 void deinitSDCard(FSW &fsw);
 bool initRTC(FSW &fsw);
+time_t getTeensy3Time();
 bool initBNO055(FSW &fsw);
 void initTimers(FSW &fsw);
 
@@ -85,5 +91,6 @@ void initTimers(FSW &fsw);
 void readAttitude(FSW &fsw);
 void readEPDS(EPDS &epds, FSW &fsw);
 void logData(FSW &fsw);
+bool getLatestPrediction(FSW &fsw, String &predictionOut, String &combinedHistogramOut);
 
 #endif
