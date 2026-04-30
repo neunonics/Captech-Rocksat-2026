@@ -4,6 +4,7 @@
 
 #include "fsw.h" // FSW HEADER
 #include "epds.h" // EPDS HEADER
+#include "inst.h" // Spectrometer histogram helpers
 
 // -- INIT FUNCTIONS -- //
 
@@ -35,7 +36,7 @@ void deinitSDCard(FSW &fsw) {
 
 // Function to initialize RTC & Mission Start Time
 bool initRTC(FSW &fsw) {
-  setSyncProvider([]() -> time_t { return (time_t)rtc_get(); }); // Set Teensy RTC as the time provider
+  setSyncProvider(getTeensy3Time);
   delay(100); // Short delay to ensure RTC is ready
   if (timeStatus() != timeSet) {
     return false; // Unable to sync with the RTC
@@ -53,13 +54,13 @@ bool initBNO055(FSW &fsw) {
   // Initialize BNO055 A
   fsw.BNO055_A = Adafruit_BNO055(BNO055_SENSOR_ID, BNO055_ADDRESS_A);
   if (!fsw.BNO055_A.begin()) {
-    Serial.println("[FSW] ERROR: Failed to initialize BNO055 A!");
+    DEBUG_SERIAL.println("[FSW] ERROR: Failed to initialize BNO055 A!");
     return false; // FAILED BNO055 A INITIALIZATION
   }
   // Initialize BNO055 B
   fsw.BNO055_B = Adafruit_BNO055(BNO055_SENSOR_ID, BNO055_ADDRESS_B);
   if (!fsw.BNO055_B.begin()) {
-    Serial.println("[FSW] ERROR: Failed to initialize BNO055 B!");
+    DEBUG_SERIAL.println("[FSW] ERROR: Failed to initialize BNO055 B!");
     return false; // FAILED BNO055 B INITIALIZATION
   }
 
@@ -87,18 +88,19 @@ void initTimers(FSW &fsw) {
   fsw.currentMissionTime = now(); // Current Time of Mission (s)
   fsw.lastHeartbeatTime = now(); // Last Time Attitude Data was Logged (s)
   fsw.lastSDCardSave = now(); // Last Time SD Card Data was Saved (s)
-  fsw.lastTransmit = now();
+  fsw.lastTransmit = now(); // Last Transmit Time (s)
+  fsw.lastPredictionSave = now(); // Last Prediction Saved to SD Card Time (s)
 }
 
 // -- LOGGING FUNCTIONS -- //
 
 void readAttitude(FSW &fsw) {
   if(!fsw.ATTITUDE_RDY) {
-    Serial.println("[FSW] ERROR: Cannot log attitude until BNO055 is ready.");
+    DEBUG_SERIAL.println("[FSW] ERROR: Cannot log attitude until BNO055 is ready.");
     if (!initBNO055(fsw)) {
-      Serial.println("[FSW] ERROR: Failed to re-initialize BNO055!");
+      DEBUG_SERIAL.println("[FSW] ERROR: Failed to re-initialize BNO055!");
     } else {
-      Serial.println("[FSW] Successfully re-initialized BNO055!");
+      DEBUG_SERIAL.println("[FSW] Successfully re-initialized BNO055!");
     }
   } else {
     // Read all attitude data from BNO055 A and BNO055 B and store in FSW struct
@@ -113,66 +115,66 @@ void readAttitude(FSW &fsw) {
     fsw.quat_B = fsw.BNO055_B.getQuat(); // Quaternion from BNO055 B
 
     // Print attitude data to Serial Monitor for debugging
-    Serial.println("[FSW] -- BNO055 A Data --");
-    Serial.print("[FSW] Euler: ");
-    Serial.print(fsw.euler_A.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.euler_A.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.euler_A.z(), 3);
-    Serial.print("[FSW] Quaternion: ");
-    Serial.print(fsw.quat_A.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.quat_A.y(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.quat_A.z(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.quat_A.w(), 3);
-    Serial.print("[FSW] Magnetometer: ");
-    Serial.print(fsw.mag_A.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.mag_A.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.mag_A.z(), 3);
-    Serial.print("[FSW] Linear Acceleration: ");
-    Serial.print(fsw.linAcc_A.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.linAcc_A.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.linAcc_A.z(), 3);
+    DEBUG_SERIAL.println("[FSW] -- BNO055 A Data --");
+    DEBUG_SERIAL.print("[FSW] Euler: ");
+    DEBUG_SERIAL.print(fsw.euler_A.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.euler_A.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.euler_A.z(), 3);
+    DEBUG_SERIAL.print("[FSW] Quaternion: ");
+    DEBUG_SERIAL.print(fsw.quat_A.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.quat_A.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.quat_A.z(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.quat_A.w(), 3);
+    DEBUG_SERIAL.print("[FSW] Magnetometer: ");
+    DEBUG_SERIAL.print(fsw.mag_A.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.mag_A.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.mag_A.z(), 3);
+    DEBUG_SERIAL.print("[FSW] Linear Acceleration: ");
+    DEBUG_SERIAL.print(fsw.linAcc_A.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.linAcc_A.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.linAcc_A.z(), 3);
 
-    Serial.println("[FSW] -- BNO055 B Data --");
-    Serial.print("[FSW] Euler: ");
-    Serial.print(fsw.euler_B.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.euler_B.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.euler_B.z(), 3);
-    Serial.print("[FSW] Quaternion: ");
-    Serial.print(fsw.quat_B.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.quat_B.y(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.quat_B.z(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.quat_B.w(), 3);
-    Serial.print("[FSW] Magnetometer: ");
-    Serial.print(fsw.mag_B.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.mag_B.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.mag_B.z(), 3);
-    Serial.print("[FSW] Linear Acceleration: ");
-    Serial.print(fsw.linAcc_B.x(), 3);
-    Serial.print(", ");
-    Serial.print(fsw.linAcc_B.y(), 3);
-    Serial.print(", ");
-    Serial.println(fsw.linAcc_B.z(), 3);
+    DEBUG_SERIAL.println("[FSW] -- BNO055 B Data --");
+    DEBUG_SERIAL.print("[FSW] Euler: ");
+    DEBUG_SERIAL.print(fsw.euler_B.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.euler_B.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.euler_B.z(), 3);
+    DEBUG_SERIAL.print("[FSW] Quaternion: ");
+    DEBUG_SERIAL.print(fsw.quat_B.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.quat_B.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.quat_B.z(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.quat_B.w(), 3);
+    DEBUG_SERIAL.print("[FSW] Magnetometer: ");
+    DEBUG_SERIAL.print(fsw.mag_B.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.mag_B.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.mag_B.z(), 3);
+    DEBUG_SERIAL.print("[FSW] Linear Acceleration: ");
+    DEBUG_SERIAL.print(fsw.linAcc_B.x(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.print(fsw.linAcc_B.y(), 3);
+    DEBUG_SERIAL.print(", ");
+    DEBUG_SERIAL.println(fsw.linAcc_B.z(), 3);
 
     fsw.fswToSave += String(fsw.euler_A.x(), 3) + ";" + String(fsw.euler_A.y(), 3) + ";" + String(fsw.euler_A.z(), 3) + ";" + // Log BNO055 A Euler angles
                       String(fsw.quat_A.x(), 3) + ";" + String(fsw.quat_A.y(), 3) + ";" + String(fsw.quat_A.z(), 3) + ";" + String(fsw.quat_A.w(), 3) + ";" + // Log BNO055 A Quaternion
                       String(fsw.mag_A.x(), 3) + ";" + String(fsw.mag_A.y(), 3) + ";" + String(fsw.mag_A.z(), 3) + ";" + // Log BNO055 A Magnetometer
-                      String(fsw.linAcc_A.x(), 3) + ";" + String(fsw.linAcc_A.y(), 3) + ";" + String(fsw.linAcc_A.z(), 3) + ";" + // Log BNO055 A Linear Acceleration
+                      String(fsw.linAcc_A.x(), 3) + ";" + String(fsw.linAcc_A.y(), 3) + ";" + String(fsw.linAcc_A.z(), 3) + ";"; // Log BNO055 A Linear Acceleration
 
     fsw.fswToSave += String(fsw.euler_B.x(), 3) + ";" + String(fsw.euler_B.y(), 3) + ";" + String(fsw.euler_B.z(), 3) + ";" + // Log BNO055 B Euler angles
                       String(fsw.quat_B.x(), 3) + ";" + String(fsw.quat_B.y(), 3) + ";" + String(fsw.quat_B.z(), 3) + ";" + String(fsw.quat_B.w(), 3) + ";" + // Log BNO055 B Quaternion
@@ -183,11 +185,11 @@ void readAttitude(FSW &fsw) {
 
 void readEPDS(EPDS &epds, FSW &fsw) {
   if(!epds.initialized) {
-    Serial.println("[EPDS] ERROR: Cannot log EPDS data until EPDS is initialized.");
+    DEBUG_SERIAL.println("[EPDS] ERROR: Cannot log EPDS data until EPDS is initialized.");
     if (EPDS_init(epds)) {
-      Serial.println("[EPDS] EPDS initialization successful on retry!");
+      DEBUG_SERIAL.println("[EPDS] EPDS initialization successful on retry!");
     } else {
-      Serial.println("[EPDS] EPDS initialization failed again on retry!");
+      DEBUG_SERIAL.println("[EPDS] EPDS initialization failed again on retry!");
     }
   } else {
     EPDS_readAll(epds);
@@ -199,14 +201,14 @@ void readEPDS(EPDS &epds, FSW &fsw) {
     float v3v3 = epds.V3V3_V;
 
     // for debugging, print the voltage values to the serial monitor in one line
-    Serial.print("[EPDS] RKT Voltage: ");
-    Serial.print(rkt, 3);
-    Serial.print(" | 12V Bus: ");
-    Serial.print(v12, 3);
-    Serial.print(" | 5V Bus: ");
-    Serial.print(v5, 3);
-    Serial.print(" | 3V3 Bus: ");
-    Serial.println(v3v3, 3);
+    DEBUG_SERIAL.print("[EPDS] RKT Voltage: ");
+    DEBUG_SERIAL.print(rkt, 3);
+    DEBUG_SERIAL.print(" | 12V Bus: ");
+    DEBUG_SERIAL.print(v12, 3);
+    DEBUG_SERIAL.print(" | 5V Bus: ");
+    DEBUG_SERIAL.print(v5, 3);
+    DEBUG_SERIAL.print(" | 3V3 Bus: ");
+    DEBUG_SERIAL.println(v3v3, 3);
 
     fsw.epdsToSave += String(rkt, 3) + ";" + String(v12, 3) + ";" + String(v5, 3) + ";" + String(v3v3, 3) + ";"; // Log EPDS voltages
   }
@@ -216,11 +218,11 @@ void logData(FSW &fsw) {
   // -- Save to SD Card -- //
   if ((fsw.currentMissionTime - fsw.lastSDCardSave) >= SD_SAVE_INTERVAL) {
     if(!fsw.SD_RDY) {
-      Serial.println("[FSW] ERROR: Cannot log data until SD card is ready.");
+      DEBUG_SERIAL.println("[FSW] ERROR: Cannot log data until SD card is ready.");
       if(!initSDCard(fsw)) {
-        Serial.println("[FSW] ERROR: Attempted SD card initialization and failed!");
+        DEBUG_SERIAL.println("[FSW] ERROR: Attempted SD card initialization and failed!");
       } else {
-        Serial.println("[FSW] SD card initialization successful!");
+        DEBUG_SERIAL.println("[FSW] SD card initialization successful!");
       }
     } else {
       // Save to SD card
@@ -239,10 +241,10 @@ void logData(FSW &fsw) {
         fsw.currentFile.print(fsw.histogramBToSave); // Write histogram data to SD card
         fsw.currentFile.println(); // Newline after each set of data
         fsw.currentFile.close();
-        Serial.println("[FSW] Data logged to SD card!");
+        DEBUG_SERIAL.println("[FSW] Data logged to SD card!");
       } else {
-        Serial.println("[FSW] ERROR: Could not open file for writing.");
-        Serial.println("[FSW] Attempting to deinitialize SD card to recover from error...");
+        DEBUG_SERIAL.println("[FSW] ERROR: Could not open file for writing.");
+        DEBUG_SERIAL.println("[FSW] Attempting to deinitialize SD card to recover from error...");
         deinitSDCard(fsw); // Deinitialize SD card to attempt recovery on next log attempt
       }
     }

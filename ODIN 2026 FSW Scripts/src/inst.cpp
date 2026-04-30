@@ -10,6 +10,7 @@
  */
 
 #include "inst.h"
+#include "fsw.h"
 
 /* ─────────────────────────────────────────────────────────────
  * RX buffers – must be large enough to hold one full histogram
@@ -138,27 +139,25 @@ static SpecStatus readHistogramFrom(HardwareSerial &port, Histogram &dst)
 
 void SPEC_InitSD(void)
 {
-    Serial.println("[SPEC] Initialising SD card...");
+    DEBUG_SERIAL.println("[SPEC] Initialising SD card...");
 
     if (!SD.begin(SD_CS_PIN)) {
-        Serial.println("[SPEC] ERROR: SD card init failed! Halting.");
+        DEBUG_SERIAL.println("[SPEC] ERROR: SD card init failed! Halting.");
         while (true) { delay(500); }
     }
 
-    Serial.println("[SPEC] SD card ready.");
+    DEBUG_SERIAL.println("[SPEC] SD card ready.");
 }
 
 void SPEC_InitUntilConnected(void)
 {
-    SPEC1_SERIAL.begin(SPEC_BAUD);
-    SPEC2_SERIAL.begin(SPEC_BAUD);
-
+    
     /* Enlarge RX buffers so one port can accumulate a full histogram
      * line while the other is being drained by readHistogramFrom. */
     SPEC1_SERIAL.addMemoryForRead(rxBuf1, sizeof(rxBuf1));
     SPEC2_SERIAL.addMemoryForRead(rxBuf2, sizeof(rxBuf2));
 
-    Serial.println("[SPEC] Waiting for spectrometers...");
+    DEBUG_SERIAL.println("[SPEC] Waiting for spectrometers...");
 
     bool s1 = false, s2 = false;
 
@@ -167,18 +166,18 @@ void SPEC_InitUntilConnected(void)
         if (!s1) {
             while (!SPEC1_SERIAL) { delay(10); }
             s1 = true;
-            Serial.println("[SPEC] Spectrometer 1 connected (SPEC1_SERIAL).");
+            DEBUG_SERIAL.println("[SPEC] Spectrometer 1 connected (SPEC1_SERIAL).");
         }
         if (!s2) {
             while (!SPEC2_SERIAL) { delay(10); }
             s2 = true;
-            Serial.println("[SPEC] Spectrometer 2 connected (SPEC2_SERIAL).");
+            DEBUG_SERIAL.println("[SPEC] Spectrometer 2 connected (SPEC2_SERIAL).");
         }
 
         if (!s1 || !s2) delay(CONNECT_RETRY_DELAY_MS);
     }
 
-    Serial.println("[SPEC] Both spectrometers ready.");
+    DEBUG_SERIAL.println("[SPEC] Both spectrometers ready.");
 }
 
 void SPEC_SyncReboot(void)
@@ -186,7 +185,7 @@ void SPEC_SyncReboot(void)
     SPEC1_SERIAL.print("reboot\r\n");
     SPEC2_SERIAL.print("reboot\r\n");
 
-    Serial.println("[SPEC] Reboot commands sent. Waiting for boot...");
+    DEBUG_SERIAL.println("[SPEC] Reboot commands sent. Waiting for boot...");
     delay(500);
 }
 
@@ -204,7 +203,7 @@ SpecStatus SPEC_LogHistogramSD(const Histogram &hist, const char *filename)
 {
     File f = SD.open(filename, FILE_WRITE);
     if (!f) {
-        Serial.printf("[SPEC] ERROR: Cannot open %s for writing.\n", filename);
+        DEBUG_SERIAL.printf("[SPEC] ERROR: Cannot open %s for writing.\n", filename);
         return SPEC_ERR_SD;
     }
 
@@ -254,7 +253,7 @@ SpecStatus SPEC_LogCombinedSD(const CombinedHistogram &hist)
 {
     File f = SD.open(SD_LOG_FILE_COMBINED, FILE_WRITE);
     if (!f) {
-        Serial.println("[SPEC] ERROR: Cannot open combined log file.");
+        DEBUG_SERIAL.println("[SPEC] ERROR: Cannot open combined log file.");
         return SPEC_ERR_SD;
     }
 
@@ -272,15 +271,15 @@ SpecStatus SPEC_LogCombinedSD(const CombinedHistogram &hist)
 void SPEC_TransmitCombined(const CombinedHistogram &hist)
 {
     for (int i = 0; i < HISTOGRAM_BINS; ++i) {
-        Serial.print(hist.bins[i]);
-        Serial.print(';');
+        DEBUG_SERIAL.print(hist.bins[i]);
+        DEBUG_SERIAL.print(';');
         OUTPUT_SERIAL.print(hist.bins[i]);
         OUTPUT_SERIAL.print(";");
     }
-    Serial.print("\r\n");
+    DEBUG_SERIAL.print("\r\n");
     OUTPUT_SERIAL.print("\r\n");
 
-    Serial.printf("[SPEC] Transmitted %d bins\n", HISTOGRAM_BINS);
+    DEBUG_SERIAL.printf("[SPEC] Transmitted %d bins\n", HISTOGRAM_BINS);
 }
 
 FaultFlags SPEC_CheckQuality(Histogram &hist)
@@ -317,7 +316,7 @@ void SPEC_HandleFaults(Histogram &hist1, Histogram &hist2)
 
     if (!fault1 && !fault2) return;
 
-    Serial.println("[SPEC] FAULT LIMIT REACHED - rebooting both spectrometers.");
+    DEBUG_SERIAL.println("[SPEC] FAULT LIMIT REACHED - rebooting both spectrometers.");
 
     SPEC_SyncReboot();
     SPEC_InitUntilConnected();
@@ -325,7 +324,7 @@ void SPEC_HandleFaults(Histogram &hist1, Histogram &hist2)
     hist1.strike_count = 0;  hist1.faults = FAULT_NONE;
     hist2.strike_count = 0;  hist2.faults = FAULT_NONE;
 
-    Serial.println("[SPEC] Recovery complete.");
+    DEBUG_SERIAL.println("[SPEC] Recovery complete.");
 }
 
 static char orinBuf[INFERENCE_BUF_LEN];
