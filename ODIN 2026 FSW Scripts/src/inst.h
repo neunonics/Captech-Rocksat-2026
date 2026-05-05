@@ -163,4 +163,8 @@ void       SPEC_AcquisitionLoop(void);
 /** Poll OUTPUT_SERIAL for a new line of inference from ORIN. */
 String       ORIN_Poll(void);
 
+/** Returns true once if a fresh '\n'-terminated ORIN line was completed
+ *  since the last call. Reading the flag clears it. */
+bool         ORIN_PredictionIsFresh(void);
+
 #endif /* INST_H */
