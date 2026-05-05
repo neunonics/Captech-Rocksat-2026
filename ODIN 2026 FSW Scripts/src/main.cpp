@@ -120,10 +120,17 @@ void setup() {
   // -- Initialize COMMS -- //
   DEBUG_SERIAL.println("[COMM] Initializing COMMS...");
 
-  // Try to initialize COMMS up to 3 times, in case of failure
+  // Try to initialize COMMS up to 3 times, in case of failure.
+  // Between attempts, power-cycle the modem via COMM_EN so it boots fresh.
   for (int attempt = 0; attempt < 3 && !comm.ENBL_STATUS; attempt++) {
+    if (attempt > 0) {
+      DEBUG_SERIAL.println("[COMM] Power-cycling modem before retry...");
+      digitalWrite(COMM_EN, LOW);
+      delay(500);
+      digitalWrite(COMM_EN, HIGH);
+      delay(2000);
+    }
     initCOMM(comm);
-    delay(LOOP_WAIT);
   }
   if (!comm.ENBL_STATUS) {
     DEBUG_SERIAL.println("[COMM] COMMS initialization failed after 3 attempts!");
@@ -181,7 +188,8 @@ void loop() {
     // TE-2 has been triggered (Science Mode)
 
     // -- See if ORIN has new prediction -- //
-    fsw.AIToSave = ORIN_Poll();
+    String latestOrin = ORIN_Poll();
+    fsw.AIToSave = latestOrin;
 
     // -- Read Spectrometer Histograms -- //
     DEBUG_SERIAL.println("[SPEC] Reading spectrometer histograms...");
@@ -205,8 +213,27 @@ void loop() {
     }
     fsw.AIToSave += fsw.combinedHistogram;
 
+    // Archive this poll's prediction into the sorted priority queue if a fresh
+    // ORIN line completed during this iteration's poll.
+    if (ORIN_PredictionIsFresh()) {
+      Priority_Insert(fsw, latestOrin, fsw.combinedHistogram);
+    }
+
     if(comm.messagesSent == 0) {
-      sendMessage(fsw, comm);
+      String topOrin, topHist;
+      bool havePriority = Priority_PeekTop(fsw, topOrin, topHist);
+      if (havePriority) {
+        DEBUG_SERIAL.print("[COMM] Using priority queue top: ");
+        DEBUG_SERIAL.println(topOrin);
+      } else {
+        DEBUG_SERIAL.println("[COMM] Priority queue empty, falling back to live ORIN+histogram.");
+      }
+      const String &txOrin = havePriority ? topOrin : latestOrin;
+      const String &txHist = havePriority ? topHist : fsw.combinedHistogram;
+      bool sent = sendMessage(fsw, comm, txOrin, txHist);
+      if (sent && havePriority) {
+        Priority_DeleteTop(fsw);
+      }
     }
   }
 
@@ -224,6 +251,7 @@ void te2(){
 
   digitalWrite(LED_COMM, HIGH); // Turn on COMMS LED to indicate TE-2 has been triggered and COMMS is now primed to XMIT
   SPEC_SyncReboot(); // Reboot spectrometers to ensure they are in sync and ready for science operations
+  fsw.lastTransmit = now(); // Reset last transmit time to now, so COMMS can transmit immediately in science mode
   DEBUG_SERIAL.println("[FSW] TE-2 Setup Finished! Payload now in Science Mode...");
   delay(TE2_WAIT); // Wait at least 10 seconds before starting TE-2 operations
   digitalWrite(LED_PWR, HIGH); // Turn off COMMS LED to indicate TE-2 operations are now starting

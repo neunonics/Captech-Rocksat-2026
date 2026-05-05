@@ -26,12 +26,15 @@
 #define TE2_CHECK_INTERVAL 1 // Check TE-2 signal every 1 second
 
 #define COMM_SEND_INTERVAL 30 // Send message via COMMS every 30 seconds
-#define COMM_TIMEOUT 10 // Timeout for COMMS transmission in seconds
+#define COMM_TIMEOUT 30 // Timeout for COMMS transmission in seconds (RB9704 README: use timeouts of several minutes, not seconds)
 
 #define TE_2_TRIGGER_THRESHOLD 2 // Number of times TE-2 signal must be read high before transitioning to Science Mode
 
 #define DEBUG_SERIAL Serial // USB Debug Serial
 #define DEBUG_SERIAL_BAUD 9600// USB Debus Serial Baud Rate
+
+#define PRIORITY_MAX_ROWS 25 // Cap on entries kept in the ORIN priority queue
+#define PRIORITY_TMP_FILE "ptmp.txt" // Working file used while rewriting the priority file
 
 struct FSW {
     // -- FSW STATUS -- //
@@ -52,6 +55,7 @@ struct FSW {
     String AIToSave; // AI data to save to SD Card in one line
     String combinedHistogram; // Combined Histogram to Transmit
     char fileName[13]; // String to carry the name of the file to save to on the SD Card
+    char priorityFileName[13]; // SD filename for the ORIN priority queue (p<last7>.txt)
 
     // -- FSW SENSORS -- //
     Adafruit_BNO055 BNO055_A;
@@ -92,5 +96,11 @@ void readAttitude(FSW &fsw);
 void readEPDS(EPDS &epds, FSW &fsw);
 void logData(FSW &fsw);
 bool getLatestPrediction(FSW &fsw, String &predictionOut, String &combinedHistogramOut);
+
+// -- PRIORITY QUEUE (ORIN predictions) -- //
+float Priority_ParseTopConfidence(const String &orinLine);
+bool  Priority_Insert(FSW &fsw, const String &orinLine, const String &combinedHist);
+bool  Priority_PeekTop(FSW &fsw, String &orinLineOut, String &histOut);
+bool  Priority_DeleteTop(FSW &fsw);
 
 #endif

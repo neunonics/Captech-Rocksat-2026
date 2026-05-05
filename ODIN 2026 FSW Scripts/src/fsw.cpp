@@ -90,6 +90,9 @@ void initTimers(FSW &fsw) {
   fsw.lastSDCardSave = now(); // Last Time SD Card Data was Saved (s)
   fsw.lastTransmit = now(); // Last Transmit Time (s)
   fsw.lastPredictionSave = now(); // Last Prediction Saved to SD Card Time (s)
+
+  snprintf(fsw.priorityFileName, sizeof(fsw.priorityFileName),
+           "p%07lu.txt", fsw.missionStartTime % 10000000);
 }
 
 // -- LOGGING FUNCTIONS -- //
@@ -179,7 +182,7 @@ void readAttitude(FSW &fsw) {
     fsw.fswToSave += String(fsw.euler_B.x(), 3) + ";" + String(fsw.euler_B.y(), 3) + ";" + String(fsw.euler_B.z(), 3) + ";" + // Log BNO055 B Euler angles
                       String(fsw.quat_B.x(), 3) + ";" + String(fsw.quat_B.y(), 3) + ";" + String(fsw.quat_B.z(), 3) + ";" + String(fsw.quat_B.w(), 3) + ";" + // Log BNO055 B Quaternion
                       String(fsw.mag_B.x(), 3) + ";" + String(fsw.mag_B.y(), 3) + ";" + String(fsw.mag_B.z(), 3) + ";" + // Log BNO055 B Magnetometer
-                      String(fsw.linAcc_B.x(), 3) + ";" + String(fsw.linAcc_B.y(), 3) + ";" + String(fsw.linAcc_B.z(), 3) + ";"; // Log BNO055 B Linear Acceleration
+                      String(fsw.linAcc_B.x(), 3) + ";" + String(fsw.linAcc_B.y(), 3) + ";" + String(fsw.linAcc_B.z(), 3) ; // Log BNO055 B Linear Acceleration
   }
 }
 
@@ -210,7 +213,7 @@ void readEPDS(EPDS &epds, FSW &fsw) {
     DEBUG_SERIAL.print(" | 3V3 Bus: ");
     DEBUG_SERIAL.println(v3v3, 3);
 
-    fsw.epdsToSave += String(rkt, 3) + ";" + String(v12, 3) + ";" + String(v5, 3) + ";" + String(v3v3, 3) + ";"; // Log EPDS voltages
+    fsw.epdsToSave += String(rkt, 3) + ";" + String(v12, 3) + ";" + String(v5, 3) + ";" + String(v3v3, 3) ; // Log EPDS voltages
   }
 }
 
@@ -249,4 +252,171 @@ void logData(FSW &fsw) {
       }
     }
   }
+}
+
+// -- PRIORITY QUEUE (ORIN predictions) -- //
+
+static void priorityStripCR(String &s) {
+  while (s.length() > 0) {
+    char c = s[s.length() - 1];
+    if (c != '\r' && c != '\n') break;
+    s.remove(s.length() - 1);
+  }
+}
+
+// Copy src -> dst byte-for-byte, then remove src. Used in place of SD.rename
+// because the stock Arduino SD wrapper does not always expose it.
+static bool priorityReplaceFile(const char *src, const char *dst) {
+  if (!SD.exists(src)) return false;
+  if (SD.exists(dst)) SD.remove(dst);
+  File in  = SD.open(src, FILE_READ);
+  File out = SD.open(dst, FILE_WRITE);
+  if (!in || !out) {
+    if (in) in.close();
+    if (out) out.close();
+    return false;
+  }
+  uint8_t buf[256];
+  while (in.available()) {
+    int n = in.read(buf, sizeof(buf));
+    if (n <= 0) break;
+    out.write(buf, n);
+  }
+  in.close();
+  out.close();
+  SD.remove(src);
+  return true;
+}
+
+float Priority_ParseTopConfidence(const String &orinLine) {
+  int comma = orinLine.indexOf(',');
+  if (comma < 0) return 0.0f;
+  int semi = orinLine.indexOf(';', comma + 1);
+  String token = (semi < 0)
+      ? orinLine.substring(comma + 1)
+      : orinLine.substring(comma + 1, semi);
+  token.trim();
+  return token.toFloat();
+}
+
+static void priorityWriteRow(File &out, const String &orinLine, const String &hist) {
+  out.print(orinLine);
+  out.print('|');
+  out.print(hist);
+  out.print('\n');
+}
+
+bool Priority_Insert(FSW &fsw, const String &orinLine, const String &combinedHist) {
+  if (!fsw.SD_RDY) return false;
+
+  float newConf = Priority_ParseTopConfidence(orinLine);
+
+  // First insert: file doesn't exist yet, write the new row as the only line.
+  if (!SD.exists(fsw.priorityFileName)) {
+    File out = SD.open(fsw.priorityFileName, FILE_WRITE);
+    if (!out) return false;
+    priorityWriteRow(out, orinLine, combinedHist);
+    out.close();
+    return true;
+  }
+
+  // Stream-merge existing file + new row into PRIORITY_TMP_FILE, sorted desc.
+  SD.remove(PRIORITY_TMP_FILE);
+  File in  = SD.open(fsw.priorityFileName, FILE_READ);
+  File out = SD.open(PRIORITY_TMP_FILE, FILE_WRITE);
+  if (!in || !out) {
+    if (in) in.close();
+    if (out) out.close();
+    return false;
+  }
+
+  int  rowsWritten = 0;
+  bool inserted    = false;
+
+  while (in.available() && rowsWritten < PRIORITY_MAX_ROWS) {
+    String line = in.readStringUntil('\n');
+    priorityStripCR(line);
+    if (line.length() == 0) continue;
+
+    float existingConf = Priority_ParseTopConfidence(line);
+
+    if (!inserted && newConf >= existingConf) {
+      priorityWriteRow(out, orinLine, combinedHist);
+      rowsWritten++;
+      inserted = true;
+      if (rowsWritten >= PRIORITY_MAX_ROWS) break;
+    }
+
+    out.print(line);
+    out.print('\n');
+    rowsWritten++;
+  }
+
+  // New row was the lowest-confidence and there's still room: append at end.
+  if (!inserted && rowsWritten < PRIORITY_MAX_ROWS) {
+    priorityWriteRow(out, orinLine, combinedHist);
+    rowsWritten++;
+  }
+
+  in.close();
+  out.close();
+
+  SD.remove(fsw.priorityFileName);
+  return priorityReplaceFile(PRIORITY_TMP_FILE, fsw.priorityFileName);
+}
+
+bool Priority_PeekTop(FSW &fsw, String &orinLineOut, String &histOut) {
+  if (!fsw.SD_RDY) return false;
+  if (!SD.exists(fsw.priorityFileName)) return false;
+  File f = SD.open(fsw.priorityFileName, FILE_READ);
+  if (!f) return false;
+  if (!f.available()) { f.close(); return false; }
+
+  String line = f.readStringUntil('\n');
+  f.close();
+  priorityStripCR(line);
+  if (line.length() == 0) return false;
+
+  int sep = line.indexOf('|');
+  if (sep < 0) return false;
+  orinLineOut = line.substring(0, sep);
+  histOut     = line.substring(sep + 1);
+  return true;
+}
+
+bool Priority_DeleteTop(FSW &fsw) {
+  if (!fsw.SD_RDY) return false;
+  if (!SD.exists(fsw.priorityFileName)) return false;
+
+  SD.remove(PRIORITY_TMP_FILE);
+  File in  = SD.open(fsw.priorityFileName, FILE_READ);
+  File out = SD.open(PRIORITY_TMP_FILE, FILE_WRITE);
+  if (!in || !out) {
+    if (in) in.close();
+    if (out) out.close();
+    return false;
+  }
+
+  bool first = true;
+  bool wroteAnything = false;
+  while (in.available()) {
+    String line = in.readStringUntil('\n');
+    priorityStripCR(line);
+    if (first) { first = false; continue; }   // drop the top row
+    if (line.length() == 0) continue;
+    out.print(line);
+    out.print('\n');
+    wroteAnything = true;
+  }
+
+  in.close();
+  out.close();
+
+  SD.remove(fsw.priorityFileName);
+
+  if (!wroteAnything) {
+    SD.remove(PRIORITY_TMP_FILE);
+    return true; // queue is now empty
+  }
+  return priorityReplaceFile(PRIORITY_TMP_FILE, fsw.priorityFileName);
 }

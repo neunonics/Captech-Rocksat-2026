@@ -1,4 +1,4 @@
-#include "EPDS.h"
+#include "epds.h"
 
 static uint16_t ina226Cal(float maxAmps, float rShunt)
 {

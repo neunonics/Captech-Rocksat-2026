@@ -271,8 +271,8 @@ SpecStatus SPEC_LogCombinedSD(const CombinedHistogram &hist)
 void SPEC_TransmitCombined(const CombinedHistogram &hist)
 {
     for (int i = 0; i < HISTOGRAM_BINS; ++i) {
-        DEBUG_SERIAL.print(hist.bins[i]);
-        DEBUG_SERIAL.print(';');
+        // DEBUG_SERIAL.print(hist.bins[i]);
+        // DEBUG_SERIAL.print(';');
         OUTPUT_SERIAL.print(hist.bins[i]);
         OUTPUT_SERIAL.print(";");
     }
@@ -329,6 +329,7 @@ void SPEC_HandleFaults(Histogram &hist1, Histogram &hist2)
 
 static char orinBuf[INFERENCE_BUF_LEN];
 static size_t orinIdx = 0;
+static bool orinFresh = false;
 
 String ORIN_Poll(void)
 {
@@ -342,13 +343,21 @@ String ORIN_Poll(void)
                 orinBuf[orinIdx] = '\0';
                 memcpy(inference, orinBuf, orinIdx + 1);
                 Serial.printf("[ORIN] %s\n", inference);
+                orinFresh = true;
             }
             orinIdx = 0;
         } else if (orinIdx < INFERENCE_BUF_LEN - 1) {
             orinBuf[orinIdx++] = (char)c;
         }
     }
-    return String(inference) + ";";
+    return String(inference);
+}
+
+bool ORIN_PredictionIsFresh(void)
+{
+    bool f = orinFresh;
+    orinFresh = false;
+    return f;
 }
 
 Histogram         hist1, hist2;
